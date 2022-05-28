@@ -28,7 +28,7 @@ def train_model():
     with mlflow.start_run() as run:
         trainer.fit(model, train_loader, val_loader)
         eval_Y = trainer.predict(model, eval_X)
-        trainer.fit(model, eval_X, eval_Y,)
+        trainer.fit(model, eval_X, eval_Y)
         trainer.save_checkpoint("./models/run{0}".format(datetime.date.today()))
 
 
