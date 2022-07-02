@@ -1,22 +1,19 @@
 from torch.utils.data import DataLoader, Dataset
-import torchvision.transforms as T
-import torch
-import torch.nn as nn
-import matplotlib.pyplot as plt
 import numpy as np
-import random
+from sklearn.preprocessing import OneHotEncoder
 
 
 class bccDataset(Dataset):
     def __init__(self, X):
-        self.X = X
+        self.X = X.transpose(0,3,1,2).astype(np.float16)
 
     def __init__(self, X, Y):
-        self.X = X
-        self.Y = Y
+        self.X = X.transpose(0,3,1,2).astype(np.float16)
+        self.Y = OneHotEncoder(dtype=np.float32).fit_transform(Y.reshape(-1, 1)).toarray()
+        #self.Y = Y.astype(np.int64)
 
     def __len__(self):
-        return len(self.Y)
+        return self.Y.shape[0]
 
     def __getitem__(self, index):
         return self.X[index], self.Y[index]

@@ -1,4 +1,5 @@
 import mlflow
+import torch
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 import mlflow.pytorch as tracker
@@ -7,20 +8,23 @@ import preprocessing as data
 import mlflow.pytorch as tracker
 from mlflow.tracking import MlflowClient
 from sklearn.model_selection import KFold
-from sklearn.metrics import accuracy_score
+import numpy as np
 import datetime
 from dataset_model import bccDataset
 
 
 def train_model():
+    # reproducibility
+    torch.manual_seed(0)
+    np.random.seed(0)
     # data
     X, Y = data.load_train("data/preprocessed_hairy/BCC", "data/unprocessed/BCC FINAL Learning Set.csv")
     kf = KFold(n_splits=5)
     kf.get_n_splits(X)
 
     # model
-    model = mdl.LitAutoEncoder()
-    batch_size, k = 64, 0
+    model = mdl.ResNevus(3)
+    batch_size, k = 16, 0
     for train_idx, test_idx in kf.split(X):
         print("Things are happening ", k)
         k += 1
@@ -29,10 +33,8 @@ def train_model():
         trainer = pl.Trainer(accelerator="gpu", gpus=1, precision=16, max_epochs=100)
         tracker.autolog()
 
-        with mlflow.start_run() as run:
-            trainer.fit(model, DataLoader(train_data), DataLoader(test_data))
-            eval_Y = trainer.predict(model, test_Y)
-            print("Split ", k, ": ", accuracy_score(model, test_Y, eval_Y))
+        with mlflow.start_run():
+            trainer.fit(model, DataLoader(train_data, batch_size=batch_size), DataLoader(test_data, batch_size=batch_size))
             trainer.save_checkpoint("./models/run{0}".format(datetime.date.today()))
 
 

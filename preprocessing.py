@@ -170,12 +170,14 @@ def load_train(im_folder, lbl_file=None):
     if lbl_file is not None:
         # load labels
         with open(lbl_file, 'r') as metadata:
-            labels = pd.read_csv(metadata).iloc[:, -2].values
+            labels = pd.read_csv(metadata).fillna(1).iloc[:, -2].values
             labels = np.delete(labels, 41, 0)
 
     # load images
     for _, _, files in os.walk(im_folder):
         for file in files:
+            if "550" in file:
+                continue
             images.append(plt.imread(im_folder+"/"+file))
 
     images = np.array(images)
@@ -199,4 +201,4 @@ def load_test():
 
 
 if __name__ == "__main__":
-    _, _ = load_train(1,"data/unprocessed/BCC FINAL Learning Set.csv")
+    _, _ = load_train("data/preprocessed_hairy/BCC","data/unprocessed/BCC FINAL Learning Set.csv")
