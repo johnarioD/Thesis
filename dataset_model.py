@@ -5,11 +5,12 @@ from sklearn.preprocessing import OneHotEncoder
 
 class bccDataset(Dataset):
     def __init__(self, X):
-        self.X = X.transpose(0,3,1,2).astype(np.float16)
+        self.X = X.transpose(0, 3, 1, 2).astype(np.float16)
 
     def __init__(self, X, Y):
-        self.X = X.transpose(0,3,1,2).astype(np.float16)
+        self.X = X.transpose(0, 3, 1, 2).astype(np.float16)
         self.Y = OneHotEncoder(dtype=np.float32).fit_transform(Y.reshape(-1, 1)).toarray()
+        self.class_balance = np.sum(self.Y, axis=0)
         #self.Y = Y.astype(np.int64)
 
     def __len__(self):
