@@ -1,5 +1,6 @@
 data
 models
 mlruns
+lightning_logs
 .idea
 venv
