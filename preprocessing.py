@@ -164,13 +164,13 @@ def preprocess(folder, no_hair):
     print("\rProgress: 100%")
 
 
-def load_train(im_folder, lbl_file=None):
+def load_train(im_folder, lbl_file=None, label_column=-2, image_size=512):
     images, labels = [], DataFrame()
 
     if lbl_file is not None:
         # load labels
         with open(lbl_file, 'r') as metadata:
-            labels = pd.read_csv(metadata).fillna(1).iloc[:, -2].values
+            labels = pd.read_csv(metadata).fillna(0).iloc[:, label_column].values
             labels = np.delete(labels, 41, 0)
 
     # load images
@@ -178,9 +178,9 @@ def load_train(im_folder, lbl_file=None):
         for file in files:
             if "550" in file:
                 continue
-            images.append(plt.imread(im_folder+"/"+file))
+            images.append(cv2.resize(plt.imread(im_folder+"/"+file),[image_size,image_size]))
 
-    images = np.array(images)
+    images = np.array(images)/255
     return images, labels
 
 
