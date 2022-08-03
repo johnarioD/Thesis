@@ -26,14 +26,19 @@ class ResNevus(pl.LightningModule):
         elif model_type == 'simple':
             self.classifier = nn.Sequential(
                 nn.Conv2d(3,3,9, padding='same'),
+                nn.BatchNorm2d(3),
                 nn.ReLU(),
                 nn.Conv2d(3,3,7, padding='same'),
+                nn.BatchNorm2d(3),
                 nn.ReLU(),
                 nn.Conv2d(3,1,5, padding='same'),
+                nn.BatchNorm2d(1),
                 nn.ReLU(),
                 nn.Conv2d(1,1,3, padding='same'),
+                nn.BatchNorm2d(1),
                 nn.ReLU(),
-                nn.Linear(im_size,self.num_classes)
+                nn.Flatten(),
+                nn.Linear(im_size**2, self.num_classes)
             )
         self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)
 

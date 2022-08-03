@@ -170,7 +170,7 @@ def load_train(im_folder, lbl_file=None, label_column=-2, image_size=512):
     if lbl_file is not None:
         # load labels
         with open(lbl_file, 'r') as metadata:
-            labels = pd.read_csv(metadata).fillna(0).iloc[:, label_column].values
+            labels = pd.read_csv(metadata).fillna(1).iloc[:, label_column].values
             labels = np.delete(labels, 41, 0)
 
     # load images
