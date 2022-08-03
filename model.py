@@ -12,6 +12,7 @@ class ResNevus(pl.LightningModule):
         self.class_balance = class_balance
         self.num_classes = len(class_balance)
         self.criterion = nn.CrossEntropyLoss()
+        self.acc_metric = torchmetrics.Accuracy()
         self.train_acc = 0
         self.val_acc = 0
         self.test_acc = 0
@@ -60,13 +61,14 @@ class ResNevus(pl.LightningModule):
         #conf_mat = conf_mat(torch.argmax(pred_y, 1).to(device='cpu'), torch.argmax(y, 1).to(device='cpu'))
         #for i in range(self.num_classes):
         #    self.train_acc += conf_mat[i, i]/(self.num_classes*self.class_balance[i])
-        self.train_acc += torch.sum(torch.argmax(pred_y, 1).to(device='cpu') == torch.argmax(y, 1).to(device='cpu'))
-        self.train_count += torch.argmax(pred_y, 1).shape[0]
+        #self.train_acc += torch.sum(torch.argmax(pred_y, 1).to(device='cpu') == y.to(device='cpu'))
+        #self.train_count += torch.argmax(pred_y, 1).shape[0]
+        self.train_acc = self.acc_metric(torch.argmax(pred_y, 1), y)
         self.log("train_loss", loss)
         return loss
 
     def training_epoch_end(self, outputs):
-        self.train_acc = self.train_acc/self.train_count
+        #self.train_acc = self.train_acc/self.train_count
         self.log('train_acc', self.train_acc, prog_bar=True)
 
     def on_validation_epoch_start(self):
@@ -81,12 +83,15 @@ class ResNevus(pl.LightningModule):
         #conf_mat = conf_mat(torch.argmax(pred_y, 1).to(device='cpu'), torch.argmax(y, 1).to(device='cpu'))
         #for i in range(self.num_classes):
         #    self.val_acc += conf_mat[i, i] / (self.num_classes * self.class_balance[i])
-        self.val_acc += torch.sum(torch.argmax(pred_y, 1).to(device='cpu') == torch.argmax(y, 1).to(device='cpu'))
-        self.val_count += torch.argmax(pred_y, 1).shape[0]
+        #self.val_acc += torch.sum(torch.argmax(pred_y, 1).to(device='cpu') == y.to(device='cpu'))
+        #self.val_count += torch.argmax(pred_y, 1).shape[0]
+        #pred_y_cpu = torch.argmax(pred_y, 1).to(device='cpu')
+        #y_cpu = y.to(device='cpu')
+        self.val_acc = self.acc_metric(torch.argmax(pred_y, 1), y)
         self.log("val_loss", loss)
 
     def validation_epoch_end(self, outputs):
-        self.val_acc = self.val_acc/self.val_count
+        #self.val_acc = self.val_acc/self.val_count
         self.log('val_acc', self.val_acc, prog_bar=True)
 
     def on_test_epoch_start(self):
@@ -101,10 +106,11 @@ class ResNevus(pl.LightningModule):
         #conf_mat = conf_mat(torch.argmax(pred_y, 1).to(device='cpu'), torch.argmax(y, 1).to(device='cpu'))
         #for i in range(self.num_classes):
         #    self.test_acc += conf_mat[i, i] / (self.num_classes * self.class_balance[i])
-        self.test_acc += torch.sum(torch.argmax(pred_y, 1).to(device='cpu') == torch.argmax(y, 1).to(device='cpu'))
-        self.test_count += torch.argmax(pred_y, 1).shape[0]
+        #self.test_acc += torch.sum(torch.argmax(pred_y, 1).to(device='cpu') == y.to(device='cpu'))
+        #self.test_count += torch.argmax(pred_y, 1).shape[0]
+        self.test_acc = self.acc_metric(torch.argmax(pred_y, 1), y)
         self.log("test_loss", loss)
 
     def test_epoch_end(self):
-        self.test_acc = self.test_acc/self.val_count
+        #self.test_acc = self.test_acc/self.val_count
         self.log('test_acc', self.test_acc)

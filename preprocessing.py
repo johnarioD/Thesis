@@ -7,7 +7,7 @@ import numpy as np
 import cv2
 import pandas as pd
 from pandas import DataFrame
-
+import re
 
 def remove_hair(image):
     grayscale = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
@@ -164,21 +164,23 @@ def preprocess(folder, no_hair):
     print("\rProgress: 100%")
 
 
-def load_train(im_folder, lbl_file=None, label_column=-2, image_size=512):
+def load_train(im_folder, lbl_file=None, image_size=512):
     images, labels = [], DataFrame()
 
+    # load labels
     if lbl_file is not None:
-        # load labels
         with open(lbl_file, 'r') as metadata:
-            labels = pd.read_csv(metadata).fillna(1).iloc[:, label_column].values
-            labels = np.delete(labels, 41, 0)
+            df = pd.read_csv(metadata)
+            labels = dict(zip(df.id, df.label))
 
     # load images
+    indices = []
     for _, _, files in os.walk(im_folder):
         for file in files:
-            if "550" in file:
-                continue
-            images.append(cv2.resize(plt.imread(im_folder+"/"+file),[image_size,image_size]))
+            i = int(re.sub('\.jpg|\.JPG', '', file))
+            images.append(cv2.resize(plt.imread(im_folder+"/"+file), [image_size, image_size]))
+            indices.append(i)
+    labels = np.array([labels[i] for i in indices])
 
     images = np.array(images)/255
     return images, labels
