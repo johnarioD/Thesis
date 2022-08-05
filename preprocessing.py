@@ -9,6 +9,7 @@ import pandas as pd
 from pandas import DataFrame
 import re
 
+
 def remove_hair(image):
     grayscale = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
     kernel = cv2.getStructuringElement(1, (17, 17))
