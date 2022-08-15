@@ -6,7 +6,7 @@ from torchvision import models
 import pytorch_lightning as pl
 
 
-class ResNevus(pl.LightningModule):
+class BaselineModel(pl.LightningModule):
     def __init__(self, class_balance, im_size=128, should_transfer=False, model_type='simple'):
         super().__init__()
         self.class_balance = class_balance
@@ -26,16 +26,16 @@ class ResNevus(pl.LightningModule):
             self.classifier.fc = nn.Linear(linear_size, self.num_classes)
         elif model_type == 'simple':
             self.classifier = nn.Sequential(
-                nn.Conv2d(3,3,9, padding='same'),
+                nn.Conv2d(3 ,3 ,9, padding='same'),
                 nn.BatchNorm2d(3),
                 nn.ReLU(),
-                nn.Conv2d(3,3,7, padding='same'),
+                nn.Conv2d(3, 3, 7, padding='same'),
                 nn.BatchNorm2d(3),
                 nn.ReLU(),
-                nn.Conv2d(3,1,5, padding='same'),
+                nn.Conv2d(3, 1, 5, padding='same'),
                 nn.BatchNorm2d(1),
                 nn.ReLU(),
-                nn.Conv2d(1,1,3, padding='same'),
+                nn.Conv2d(1, 1, 3, padding='same'),
                 nn.BatchNorm2d(1),
                 nn.ReLU(),
                 nn.Flatten(),

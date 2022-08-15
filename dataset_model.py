@@ -11,6 +11,8 @@ class bccDataset(Dataset):
         self.X = X.transpose(0, 3, 1, 2).astype(np.float32)
         self.Y = Y.astype(np.int64)-np.min(Y)
         self.class_balance = []#np.sum(self.Y, axis=0)
+        for class_id in range(np.min(self.Y), np.max(self.Y)+1):
+            self.class_balance.append(np.sum(self.Y==class_id))
         for label in np.unique(self.Y):
             self.class_balance.append(np.count_nonzero(self.Y == label))
 

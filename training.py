@@ -3,7 +3,7 @@ import torch
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 import mlflow.pytorch as tracker
-import model as mdl
+from models import BaselineModel
 import preprocessing as data
 import mlflow.pytorch as tracker
 from mlflow.tracking import MlflowClient
@@ -20,9 +20,10 @@ def train_model():
     torch.manual_seed(0)
     np.random.seed(0)
 
+    imsize=512
     # data
     print("Loading Data")
-    X, Y = data.load_train(im_folder="data/preprocessed_hairy/BCC", lbl_file="data/unprocessed/BCC_tags.csv", image_size=128)
+    X, Y = data.load_train(im_folder="data/preprocessed_hairy/BCC", lbl_file="data/unprocessed/BCC_tags.csv", image_size=imsize)
     kf = KFold(n_splits=5)
     kf.get_n_splits(X)
 
@@ -39,8 +40,8 @@ def train_model():
         k += 1
         train_data = bccDataset(X=X[train_idx], Y=Y[train_idx])
         test_data = bccDataset(X=X[test_idx], Y=Y[test_idx])
-        model = mdl.ResNevus(train_data.class_balance, should_transfer=True, model_type='simple')
-        summary(model, (3, 128, 128))
+        model = BaselineModel(train_data.class_balance, should_transfer=True, model_type='simple', im_size=imsize)
+        #summary(model, (3, 128, 128))
         early_stopping = pl.callbacks.early_stopping.EarlyStopping(monitor='train_loss', patience=80, mode='min', min_delta=0.0001, check_on_train_epoch_end=True)
         trainer = pl.Trainer(accelerator="gpu", gpus=1, precision=16, max_epochs=1000, callbacks=[early_stopping])
         tracker.autolog(silent=True)
