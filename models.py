@@ -16,17 +16,17 @@ class BaselineModel(pl.LightningModule):
         self.train_acc = 0
         self.test_acc = 0
         self.val_acc = 0
-        if model_type == 'resnet':
+        if model_type == 'resnet18':
             self.classifier = models.resnet18(pretrained=should_transfer)
             linear_size = list(self.classifier.children())[-1].in_features
             self.classifier.fc = nn.Linear(linear_size, self.num_classes)
-        elif model_type == 'handmade':
+        elif model_type == 'resnet18_handmade':
             self.classifier = handmade.ResNet(handmade.BasicBlock, [1,1,1,1], num_classes=self.num_classes)
             linear_size = list(self.classifier.children())[-1].in_features
             self.classifier.fc = nn.Linear(linear_size, self.num_classes)
-        elif model_type == 'simple':
+        elif model_type == 'simple_conv':
             self.classifier = nn.Sequential(
-                nn.Conv2d(3 ,3 ,9, padding='same'),
+                nn.Conv2d(3, 3, 9, padding='same'),
                 nn.BatchNorm2d(3),
                 nn.ReLU(),
                 nn.Conv2d(3, 3, 7, padding='same'),

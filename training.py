@@ -40,7 +40,7 @@ def train_model():
         k += 1
         train_data = bccDataset(X=X[train_idx], Y=Y[train_idx])
         test_data = bccDataset(X=X[test_idx], Y=Y[test_idx])
-        model = BaselineModel(train_data.class_balance, should_transfer=True, model_type='simple', im_size=imsize)
+        model = BaselineModel(train_data.class_balance, should_transfer=True, model_type='simple_conv', im_size=imsize)
         #summary(model, (3, 128, 128))
         early_stopping = pl.callbacks.early_stopping.EarlyStopping(monitor='train_loss', patience=80, mode='min', min_delta=0.0001, check_on_train_epoch_end=True)
         trainer = pl.Trainer(accelerator="gpu", gpus=1, precision=16, max_epochs=1000, callbacks=[early_stopping])
