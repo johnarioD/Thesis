@@ -187,11 +187,30 @@ def load_train(im_folder, lbl_file=None, image_size=512):
     return images, labels
 
 
-def load_train_full():
+def load_train_full(labeled_image_folder, unlabeled_image_folder, lbl_file=None, image_size=512):
+    images, labels = [], DataFrame()
+
     # load labels
-    labels = []
-    # load images
-    images = []
+    if lbl_file is not None:
+        with open(lbl_file, 'r') as metadata:
+            df = pd.read_csv(metadata)
+            labels = dict(zip(df.id, df.label))
+
+    # load labeled images
+    indices = []
+    for _, _, files in os.walk(labeled_image_folder):
+        for file in files:
+            i = int(re.sub('\.jpg|\.JPG', '', file))
+            images.append(cv2.resize(plt.imread(labeled_image_folder + "/" + file), [image_size, image_size]))
+            indices.append(i)
+    labels = np.array([labels[i] for i in indices])
+
+    for _, _, files in os.walk(unlabeled_image_folder):
+        for file in files:
+            images.append(cv2.resize(plt.imread(unlabeled_image_folder + "/" + file), [image_size, image_size]))
+            labels.append(None)
+
+    images = np.array(images) / 255
     return images, labels
 
 
