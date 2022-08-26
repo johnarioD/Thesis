@@ -14,4 +14,4 @@ class bccDataset(Dataset):
         return self.Y.shape[0]
 
     def __getitem__(self, index):
-        return self.Xl[index], self.Y[index]
+        return self.X[index], self.Y[index]
