@@ -91,7 +91,7 @@ def train_SSL():
         tracker.autolog(silent=True)
 
         with mlflow.start_run():
-            trainer.fit(model=model, train_dataloaders=DataLoader(train_data, batch_size=batch_size), val_dataloaders=DataLoader(test_data, batch_size=batch_size))
+            trainer.fit(model=model.cuda(), train_dataloaders=DataLoader(train_data, batch_size=batch_size), val_dataloaders=DataLoader(test_data, batch_size=batch_size))
             trainer.save_checkpoint("./models/run{0}".format(datetime.date.today()))
             cross_val_acc['train'] += model.train_acc
             cross_val_acc['val'] += model.val_acc
