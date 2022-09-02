@@ -1,9 +1,8 @@
-import torch
-import torch.nn as nn
+import pandas as pd
+from matplotlib import pyplot as plt
 
-loss = nn.CrossEntropyLoss()
-inp = torch.randn(3, 5, requires_grad=True)
-target = torch.empty(3, dtype=torch.long).random_(5)
-out = loss(inp, target)
-out.backward()
-print(out)
+metadata = pd.read_csv("./data/unsorted/ISIC_2019_Training_GroundTruth.csv")
+images = metadata.image[metadata.BCC == 1]
+for image in images:
+    res = plt.imread("./data/unsorted/images/"+image+".jpg")
+    plt.imsave("./data/unprocessed/train/"+image+".jpg", res)

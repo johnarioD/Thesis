@@ -5,7 +5,8 @@ from torch import nn
 from torchvision import models
 import pytorch_lightning as pl
 import contextlib
-import torch.nn.functional as F
+from torch.nn import KLDivLoss as kl_div
+from torch.nn import Softmax
 
 
 class BaselineModel(pl.LightningModule):
@@ -105,13 +106,14 @@ class VATModel(pl.LightningModule):
         self.ip = ip
         self.a = a
 
-        self.criterion = nn.CrossEntropyLoss()
-        self.acc_metric = torchmetrics.Accuracy()
-
-        self.accuracy = {"train": 0, "test": 0, "val": 0}
-
         self.class_balance = class_balance
         self.num_classes = len(class_balance)
+
+        self.softmax = Softmax(dim=1)
+        self.criterion = kl_div()
+        self.accuracy = {"train": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
+                         "test": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
+                         "val": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted')}
 
         self.classifier = models.resnet18(pretrained=should_transfer)
         linear_size = list(self.classifier.children())[-1].in_features
@@ -131,15 +133,14 @@ class VATModel(pl.LightningModule):
 
         # Create random unit tensor
         if batch_idx == 0:
-            self.d = torch.rand(x.shape).to(x.device)
-            self.d = self.d/(torch.norm(self.d) + 1e-8)
-            self.d.requires_grad
+            d = torch.rand(x.shape).to(x.device)
+            d = d/(torch.norm(d) + 1e-8)
 
+        #pred_y = self.classifier(x)
+        #y[unlabeled_idx] = pred_y[unlabeled_idx]
         pred_y = self.classifier(x)
-        y[unlabeled_idx] = pred_y[unlabeled_idx]
         l = self.criterion(pred_y, y)
         # with torch.no_grad():
-        # pred = F.softmax(self.classifier(x), dim=1)
 
         '''
         with _disable_tracking_bn_stats(self):
@@ -161,26 +162,25 @@ class VATModel(pl.LightningModule):
         dd.requires_grad = True
         '''
 
-
         R_adv = 0
         r_vadv = torch.zeros_like(x)
         with _disable_tracking_bn_stats(self):
             for _ in range(self.ip):
-                r = self.xi * self.d
-                r.requires_grad = True
-                pred_hat = self.classifier(x + r)
+                d.requires_grad=True
+                d = self.xi * d
+                pred_hat = self.softmax(self.classifier(x + d))
                 # pred_hat = F.log_softmax(pred_hat, dim=1)
                 D = self.criterion(pred_hat, pred_y)
-                self.classifier.zero_grad()
-                D.backward(gradient=r)
-                r_vadv = self.eps * r.grad / (torch.norm(r.grad) + 1e-8)
+                d = torch.autograd.grad(D, d)[0]
 
-        pred_adv = self.classifier(x + r_vadv)
+        r_vadv = self.eps * d / (torch.norm(d) + 1e-8)
+
+        pred_adv = self.softmax(self.classifier(x + r_vadv))
         R_adv = self.criterion(pred_adv, pred_y)
 
         loss = l + R_adv * self.a
         loss.backward()
-        self.accuracy[step_type] = self.acc_metric(torch.argmax(pred_y, 1), y)
+        self.accuracy[step_type].update(torch.argmax(pred_y, 1).to('cpu'), y.to('cpu'))
         return loss
 
     def training_step(self, train_batch, batch_idx):
@@ -189,18 +189,21 @@ class VATModel(pl.LightningModule):
         return loss
 
     def training_epoch_end(self, outputs):
-        self.log('train_acc', self.accuracy['train'], prog_bar=True)
+        accuracy = self.accuracy['train'].compute()
+        self.log('train_acc', accuracy, prog_bar=True)
 
     def validation_step(self, val_batch, batch_idx):
         loss = self.generic_step(val_batch, batch_idx, step_type="val")
         self.log("val_loss", loss)
 
     def validation_epoch_end(self, outputs):
-        self.log('val_acc', self.accuracy['val'], prog_bar=True)
+        accuracy = self.accuracy['val'].compute()
+        self.log('val_acc', accuracy, prog_bar=True)
 
     def test_step(self, test_batch, batch_idx):
         loss = self.generic_step(test_batch, batch_idx, step_type="test")
         self.log("test_loss", loss)
 
     def test_epoch_end(self):
-        self.log('test_acc', self.accuracy['test'])
+        accuracy = self.accuracy['test'].compute()
+        self.log('test_acc', accuracy)
