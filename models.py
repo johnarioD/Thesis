@@ -129,7 +129,7 @@ class VATModel(pl.LightningModule):
 
     def generic_step(self, train_batch, batch_idx, step_type):
         x, y = train_batch
-        unlabeled_idx = y is None
+        unlabeled_idx = y == -1
 
         # Create random unit tensor
         if batch_idx == 0:

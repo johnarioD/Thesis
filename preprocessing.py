@@ -187,14 +187,22 @@ def load_train(im_folder, lbl_file=None, image_size=512):
     return images, labels
 
 
-def load_train_full(labeled_image_folder, unlabeled_image_folder, lbl_file=None, image_size=512):
+def load_train_full(version="hairy", ssl=False, image_size=512):
     images, labels = [], DataFrame()
 
+    lbl_file = "data/unprocessed/BCC_tags.csv"
+    if version == "hairy":
+        labeled_image_folder = "data/preprocessed_hairy/BCC"
+        unlabeled_image_folder = "data/preprocessed_hairy/train"
+    else:
+        labeled_image_folder = "data/preprocessed/BCC"
+        unlabeled_image_folder = "data/preprocessed/train"
+
+
     # load labels
-    if lbl_file is not None:
-        with open(lbl_file, 'r') as metadata:
-            df = pd.read_csv(metadata)
-            labels = dict(zip(df.id, df.label))
+    with open(lbl_file, 'r') as metadata:
+        df = pd.read_csv(metadata)
+        labels = dict(zip(df.id, df.label))
 
     # load labeled images
     indices = []
@@ -203,12 +211,13 @@ def load_train_full(labeled_image_folder, unlabeled_image_folder, lbl_file=None,
             i = int(re.sub('\.jpg|\.JPG', '', file))
             images.append(cv2.resize(plt.imread(labeled_image_folder + "/" + file), [image_size, image_size]))
             indices.append(i)
-    labels = np.array([labels[i] for i in indices])
+    labels = np.array([labels[i] for i in indices])-1
 
-    for _, _, files in os.walk(unlabeled_image_folder):
-        for file in files:
-            images.append(cv2.resize(plt.imread(unlabeled_image_folder + "/" + file), [image_size, image_size]))
-            labels.append(None)
+    if ssl:
+        for _, _, files in os.walk(unlabeled_image_folder):
+            for file in files:
+                images.append(cv2.resize(plt.imread(unlabeled_image_folder + "/" + file), [image_size, image_size]))
+                labels = np.append(labels, [-1])
 
     images = np.array(images) / 255
     return images, labels
@@ -223,4 +232,4 @@ def load_test():
 
 
 if __name__ == "__main__":
-    _, _ = load_train("data/preprocessed_hairy/BCC","data/unprocessed/BCC FINAL Learning Set.csv")
+    preprocess("/train", no_hair=True)

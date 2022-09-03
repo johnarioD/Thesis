@@ -23,7 +23,7 @@ def training(model_type="baseline"):
     imsize = 128
     # data
     print("Loading Data")
-    X, Y = data.load_train(im_folder="data/preprocessed_hairy/BCC", lbl_file="data/unprocessed/BCC_tags.csv", image_size=imsize)
+    X, Y = data.load_train_full(version="hairy", ssl=True, image_size=imsize)
     kf = KFold(n_splits=5)
     kf.get_n_splits(X)
 
