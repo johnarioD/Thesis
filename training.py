@@ -41,9 +41,9 @@ def training(model_type="baseline"):
         train_data = bccDataset(X=X[train_idx], Y=Y[train_idx])
         test_data = bccDataset(X=X[test_idx], Y=Y[test_idx])
         if model_type == "baseline":
-            model = BaselineModel(train_data.class_balance, should_transfer=True, model_type='resnet18', im_size=imsize)
+            model = BaselineModel(should_transfer=True, model_type='resnet18', im_size=imsize)
         elif model_type == "vat":
-            model = VATModel(train_data.class_balance, should_transfer=False)
+            model = VATModel(should_transfer=False)
         else:
             return
         #summary(model, (3, 128, 128))

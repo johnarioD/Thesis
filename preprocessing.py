@@ -233,3 +233,4 @@ def load_test():
 
 if __name__ == "__main__":
     preprocess("/train", no_hair=True)
+    preprocess("/train", no_hair=False)
