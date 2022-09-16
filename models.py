@@ -224,7 +224,7 @@ class VATModel2(pl.LightningModule):
         self.a = a
 
         self.num_classes = num_classes
-        #self.automatic_optimization = False
+        self.automatic_optimization = False
 
         self.softmax = Softmax(dim=1)
         self.criterion = kl_div_with_logit
@@ -259,11 +259,12 @@ class VATModel2(pl.LightningModule):
 
                 dd = torch.autograd.grad(dist, dd)[0]
 
-        r_adv = self.ep * l2_normalize(dd.detach())
+        r_adv = self.eps * l2_normalize(dd.detach())
 
         return r_adv
 
     def generic_step(self, train_batch, batch_idx, step_type):
+        torch.set_grad_enabled(True)
         x, y = train_batch
         unlabeled_idx = y == -1
 
@@ -278,7 +279,7 @@ class VATModel2(pl.LightningModule):
         y = F.one_hot(y, num_classes=self.num_classes).type(torch.float16)
         l = self.criterion(pred_y, y)
 
-        #self.optimizer.zero_grad()
+        self.optimizer.zero_grad()
         r_vadv = self.compute_adversarial_direction(x, pred_y)
 
         pred_adv = self.classifier(x + r_vadv)
@@ -287,14 +288,16 @@ class VATModel2(pl.LightningModule):
 
         # loss = R_adv * self.a
         loss = l + R_adv * self.a
-        loss.backward()
+        self.manual_backward(loss)
         self.accuracy[step_type].update(torch.argmax(pred_y, 1).to('cpu'), torch.argmax(y, 1).to('cpu'))
-        #self.optimizer.step()
-        return loss
+        self.optimizer.step()
+        return loss, l, R_adv
 
     def training_step(self, train_batch, batch_idx):
-        loss = self.generic_step(train_batch, batch_idx, step_type="train")
+        loss, l, R_adv = self.generic_step(train_batch, batch_idx, step_type="train")
         self.log("train_loss", loss)
+        self.log("train_l", l)
+        self.log("train_R_adv", R_adv)
         return loss
 
     def training_epoch_end(self, outputs):
@@ -302,16 +305,20 @@ class VATModel2(pl.LightningModule):
         self.log('train_acc', accuracy, prog_bar=True)
 
     def validation_step(self, val_batch, batch_idx):
-        loss = self.generic_step(val_batch, batch_idx, step_type="val")
+        loss, l, R_adv = self.generic_step(val_batch, batch_idx, step_type="val")
         self.log("val_loss", loss)
+        self.log("val_l", l)
+        self.log("val_R_adv", R_adv)
 
     def validation_epoch_end(self, outputs):
         accuracy = self.accuracy['val'].compute()
         self.log('val_acc', accuracy, prog_bar=True)
 
     def test_step(self, test_batch, batch_idx):
-        loss = self.generic_step(test_batch, batch_idx, step_type="test")
+        loss, l, R_adv = self.generic_step(test_batch, batch_idx, step_type="test")
         self.log("test_loss", loss)
+        self.log("test_l", l)
+        self.log("test_R_adv", R_adv)
 
     def test_epoch_end(self):
         accuracy = self.accuracy['test'].compute()

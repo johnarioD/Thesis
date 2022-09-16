@@ -3,7 +3,7 @@ import torch
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 import mlflow.pytorch as tracker
-from models import BaselineModel, VATModel
+from models import BaselineModel, VATModel2
 import preprocessing as data
 import mlflow.pytorch as tracker
 from mlflow.tracking import MlflowClient
@@ -43,7 +43,7 @@ def training(model_type="baseline"):
         if model_type == "baseline":
             model = BaselineModel(should_transfer=True, model_type='resnet18', im_size=imsize)
         elif model_type == "vat":
-            model = VATModel(should_transfer=False)
+            model = VATModel2(should_transfer=False)
         else:
             return
         #summary(model, (3, 128, 128))
