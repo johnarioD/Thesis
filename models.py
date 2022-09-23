@@ -119,7 +119,7 @@ def l2_normalize(d):
 
 
 class VATModel(pl.LightningModule):
-    def __init__(self, num_classes=3, xi=10.0, eps=1.0, ip=1, a=1, pretrained=False):
+    def __init__(self, num_classes=3, xi=1e-6, eps=1.0, ip=1, a=1, pretrained=False):
         super().__init__()
         self.xi = xi
         self.eps = eps
