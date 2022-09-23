@@ -10,17 +10,17 @@ import torch.nn.functional as F
 
 
 class BaselineModel(pl.LightningModule):
-    def __init__(self, num_classes=3, im_size=512, should_transfer=False, model_type='simple_conv'):
+    def __init__(self, num_classes=3, im_size=512, pretrained=False, model_type='resnet18'):
         super().__init__()
         self.num_classes = num_classes
 
-        self.criterion = nn.CrossEntropyLoss()
+        self.cross_entropy = nn.CrossEntropyLoss()
         self.accuracy = {"train": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
                          "test": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
                          "val": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted')}
 
         if model_type == 'resnet18':
-            self.classifier = models.resnet18(pretrained=should_transfer)
+            self.classifier = models.resnet18(pretrained=pretrained)
             linear_size = list(self.classifier.children())[-1].in_features
             self.classifier.fc = nn.Linear(linear_size, self.num_classes)
         elif model_type == 'resnet18_handmade':
@@ -56,7 +56,7 @@ class BaselineModel(pl.LightningModule):
     def generic_step(self, train_batch, batch_idx, step_type):
         x, y = train_batch
         pred_y = self(x)
-        loss = self.criterion(pred_y, y)
+        loss = self.cross_entropy(pred_y, y)
         self.accuracy[step_type].update(torch.argmax(pred_y, 1).to('cpu'), y.to('cpu'))
         return loss
 
@@ -71,7 +71,7 @@ class BaselineModel(pl.LightningModule):
 
     def validation_step(self, val_batch, batch_idx):
         loss = self.generic_step(val_batch, batch_idx, step_type="val")
-        self.log("val_loss", loss)
+        self.log("val_loss", loss, prog_bar=True)
 
     def validation_epoch_end(self, outputs):
         accuracy = self.accuracy['val'].compute()
@@ -119,7 +119,7 @@ def l2_normalize(d):
 
 
 class VATModel(pl.LightningModule):
-    def __init__(self, num_classes=3, xi=10.0, eps=1.0, ip=1, a=1, should_transfer=False):
+    def __init__(self, num_classes=3, xi=10.0, eps=1.0, ip=1, a=1, pretrained=False):
         super().__init__()
         self.xi = xi
         self.eps = eps
@@ -135,108 +135,11 @@ class VATModel(pl.LightningModule):
                          "test": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
                          "val": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted')}
 
-        self.classifier = models.resnet18(pretrained=should_transfer)
+        self.classifier = models.resnet18(pretrained=pretrained)
         linear_size = list(self.classifier.children())[-1].in_features
         self.classifier.fc = nn.Linear(linear_size, self.num_classes)
 
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
-
-    def forward(self, x):
-        self.classifier(x)
-
-    def configure_optimizers(self):
-        return self.optimizer
-
-    def generic_step(self, train_batch, batch_idx, step_type):
-        x, y = train_batch
-        unlabeled_idx = y == -1
-
-        # Create random unit tensor
-        # if batch_idx == 0:
-        d = torch.rand(x.shape).to(x.device)
-        d.requires_grad = True
-
-        pred_y = self.classifier(x)
-        # pred_y = self.softmax(pred_y)
-        y[unlabeled_idx] = torch.argmax(pred_y, 1)[unlabeled_idx]
-        y = F.one_hot(y, num_classes=self.num_classes).type(torch.float16)
-        l = self.criterion(pred_y, y)
-
-        self.optimizer.zero_grad()
-        with _disable_tracking_bn_stats(self):
-            for _ in range(self.ip):
-                d.requires_grad = True
-                d = self.xi * l2_normalize(d)
-                d.requires_grad = True
-
-                pred_hat = self.classifier(x + d)
-                # pred_hat = self.softmax(pred_hat)
-
-                D = self.criterion(pred_y, pred_hat)
-
-                d = torch.autograd.grad(outputs=D, inputs=d)[0]
-
-        r_vadv = self.eps * l2_normalize(d.detach())
-
-        pred_adv = self.classifier(x + r_vadv)
-        # pred_adv = self.softmax(pred_adv)
-        R_adv = self.criterion(pred_y, pred_adv)
-
-        # loss = R_adv * self.a
-        loss = l + R_adv * self.a
-        self.manual_backward(loss)
-        self.accuracy[step_type].update(torch.argmax(pred_y, 1).to('cpu'), torch.argmax(y, 1).to('cpu'))
-        self.optimizer.step()
-        return loss
-
-    def training_step(self, train_batch, batch_idx):
-        loss = self.generic_step(train_batch, batch_idx, step_type="train")
-        self.log("train_loss", loss)
-        return loss
-
-    def training_epoch_end(self, outputs):
-        accuracy = self.accuracy['train'].compute()
-        self.log('train_acc', accuracy, prog_bar=True)
-
-    def validation_step(self, val_batch, batch_idx):
-        loss = self.generic_step(val_batch, batch_idx, step_type="val")
-        self.log("val_loss", loss)
-
-    def validation_epoch_end(self, outputs):
-        accuracy = self.accuracy['val'].compute()
-        self.log('val_acc', accuracy, prog_bar=True)
-
-    def test_step(self, test_batch, batch_idx):
-        loss = self.generic_step(test_batch, batch_idx, step_type="test")
-        self.log("test_loss", loss)
-
-    def test_epoch_end(self):
-        accuracy = self.accuracy['test'].compute()
-        self.log('test_acc', accuracy)
-
-
-class VATModel2(pl.LightningModule):
-    def __init__(self, num_classes=3, xi=10.0, eps=1.0, ip=1, a=1, should_transfer=False):
-        super().__init__()
-        self.xi = xi
-        self.eps = eps
-        self.ip = ip
-        self.a = a
-
-        self.num_classes = num_classes
-        self.automatic_optimization = False
-
-        self.softmax = Softmax(dim=1)
-        self.criterion = kl_div_with_logit
-        self.accuracy = {"train": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
-                         "test": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
-                         "val": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted')}
-
-        self.classifier = models.resnet18(pretrained=should_transfer)
-        linear_size = list(self.classifier.children())[-1].in_features
-        self.classifier.fc = nn.Linear(linear_size, self.num_classes)
-
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-6)
 
     def forward(self, x):
         self.classifier(x)
@@ -279,7 +182,6 @@ class VATModel2(pl.LightningModule):
         y = F.one_hot(y, num_classes=self.num_classes).type(torch.float16)
         l = self.criterion(pred_y, y)
 
-        self.optimizer.zero_grad()
         r_vadv = self.compute_adversarial_direction(x, pred_y)
 
         pred_adv = self.classifier(x + r_vadv)
@@ -288,6 +190,7 @@ class VATModel2(pl.LightningModule):
 
         # loss = R_adv * self.a
         loss = l + R_adv * self.a
+        self.optimizer.zero_grad()
         self.manual_backward(loss)
         self.accuracy[step_type].update(torch.argmax(pred_y, 1).to('cpu'), torch.argmax(y, 1).to('cpu'))
         self.optimizer.step()
@@ -295,7 +198,7 @@ class VATModel2(pl.LightningModule):
 
     def training_step(self, train_batch, batch_idx):
         loss, l, R_adv = self.generic_step(train_batch, batch_idx, step_type="train")
-        self.log("train_loss", loss)
+        self.log("train_loss", loss, prog_bar=True)
         self.log("train_l", l)
         self.log("train_R_adv", R_adv)
         return loss
