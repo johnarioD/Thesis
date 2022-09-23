@@ -139,7 +139,7 @@ class VATModel(pl.LightningModule):
         linear_size = list(self.classifier.children())[-1].in_features
         self.classifier.fc = nn.Linear(linear_size, self.num_classes)
 
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-6)
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)
 
     def forward(self, x):
         self.classifier(x)
