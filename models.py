@@ -10,7 +10,7 @@ import torch.nn.functional as F
 
 
 class BaselineModel(pl.LightningModule):
-    def __init__(self, num_classes=3, im_size=512, pretrained=False, model_type='resnet18'):
+    def __init__(self, num_classes=3, pretrained='False'):
         super().__init__()
         self.num_classes = num_classes
 
@@ -19,31 +19,15 @@ class BaselineModel(pl.LightningModule):
                          "test": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
                          "val": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted')}
 
-        if model_type == 'resnet18':
-            self.classifier = models.resnet18(pretrained=pretrained)
-            linear_size = list(self.classifier.children())[-1].in_features
-            self.classifier.fc = nn.Linear(linear_size, self.num_classes)
-        elif model_type == 'resnet18_handmade':
-            self.classifier = handmade.ResNet(handmade.BasicBlock, [1, 1, 1, 1], num_classes=self.num_classes)
-            linear_size = list(self.classifier.children())[-1].in_features
-            self.classifier.fc = nn.Linear(linear_size, self.num_classes)
-        elif model_type == 'simple_conv':
-            self.classifier = nn.Sequential(
-                nn.Conv2d(3, 3, 9, padding='same'),
-                nn.BatchNorm2d(3),
-                nn.ReLU(),
-                nn.Conv2d(3, 3, 7, padding='same'),
-                nn.BatchNorm2d(3),
-                nn.ReLU(),
-                nn.Conv2d(3, 1, 5, padding='same'),
-                nn.BatchNorm2d(1),
-                nn.ReLU(),
-                nn.Conv2d(1, 1, 3, padding='same'),
-                nn.BatchNorm2d(1),
-                nn.ReLU(),
-                nn.Flatten(),
-                nn.Linear(im_size ** 2, self.num_classes)
-            )
+        if pretrained == 'False':
+            self.classifier = models.resnet18(pretrained=False)
+        elif pretrained == 'Generic':
+            self.classifier = models.resnet18(pretrained=True)
+        elif pretrained == 'Lesion':
+            self.classifier = BaselineModel.load_from_checkpoint(checkpoint_path="./models/baseline_ISIC_1.chkpt")
+
+        linear_size = list(self.classifier.children())[-1].in_features
+        self.classifier.fc = nn.Linear(linear_size, self.num_classes)
 
         self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)
 
