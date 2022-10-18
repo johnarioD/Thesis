@@ -10,7 +10,7 @@ import torch.nn.functional as F
 
 
 class BaselineModel(pl.LightningModule):
-    def __init__(self, num_classes=3, pretrained='False'):
+    def __init__(self, num_classes, pretrained=0):
         super().__init__()
         self.num_classes = num_classes
 
@@ -19,17 +19,25 @@ class BaselineModel(pl.LightningModule):
                          "test": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
                          "val": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted')}
 
-        if pretrained == 'False':
+        if pretrained == 0:
             self.classifier = models.resnet18(pretrained=False)
-        elif pretrained == 'Generic':
+        elif pretrained == 1:
             self.classifier = models.resnet18(pretrained=True)
-        elif pretrained == 'Lesion':
-            self.classifier = BaselineModel.load_from_checkpoint(checkpoint_path="./models/baseline_ISIC_1.chkpt")
 
         linear_size = list(self.classifier.children())[-1].in_features
         self.classifier.fc = nn.Linear(linear_size, self.num_classes)
 
         self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)
+
+    def change_output(self, num_classes=3):
+        self.num_classes = num_classes
+
+        self.accuracy = {"train": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
+                         "test": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
+                         "val": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted')}
+
+        linear_size = list(self.classifier.children())[-1].in_features
+        self.classifier.fc = nn.Linear(linear_size, self.num_classes)
 
     def forward(self, x):
         return self.classifier(x)
