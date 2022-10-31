@@ -126,5 +126,7 @@ def training(run_name, pretrain=0, ssl=False):
 
 
 if __name__ == "__main__":
+    training(run_name="Resnet18 no pretraining", pretrain=0, ssl=False)
     training(run_name="Resnet18 imnet pretraining", pretrain=1, ssl=False)
+    training(run_name="Resnet18 lesion pretraining", pretrain=2, ssl=False)
     #pretraining()

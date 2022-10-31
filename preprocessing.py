@@ -122,6 +122,9 @@ def preprocess(folder, no_hair):
     else:
         path_to_processed = Path('./data/preprocessed_hairy' + folder)
 
+    if not os.path.exists(path_to_processed):
+        os.mkdir(path_to_processed)
+
     target_size = [512, 512]
     traverser = os.walk(path_to_original)
     files_processed, prev = 0, 0
@@ -179,11 +182,11 @@ def load_train(im_folder, lbl_file=None, image_size=512):
     for _, _, files in os.walk(im_folder):
         for file in files:
             i = int(re.sub('\.jpg|\.JPG', '', file))
-            images.append(cv2.resize(plt.imread(im_folder+"/"+file), [image_size, image_size]))
+            images.append(cv2.resize(plt.imread(im_folder + "/" + file), [image_size, image_size]))
             indices.append(i)
     labels = np.array([labels[i] for i in indices])
 
-    images = np.array(images)/255
+    images = np.array(images) / 255
     return images, labels
 
 
@@ -198,7 +201,6 @@ def load_train_full(version="hairy", ssl=False, image_size=512):
         labeled_image_folder = "data/preprocessed/BCC"
         unlabeled_image_folder = "data/preprocessed/train"
 
-
     # load labels
     with open(lbl_file, 'r') as metadata:
         df = pd.read_csv(metadata)
@@ -209,28 +211,24 @@ def load_train_full(version="hairy", ssl=False, image_size=512):
     for _, _, files in os.walk(labeled_image_folder):
         for file in files:
             i = int(re.sub('\.jpg|\.JPG', '', file))
-            images.append(cv2.resize(plt.imread(labeled_image_folder + "/" + file), [image_size, image_size]))
+            normal_image = cv2.resize(plt.imread(labeled_image_folder + "/" + file), [image_size, image_size])
+            images.append(normal_image)
             indices.append(i)
-    labels = np.array([labels[i] for i in indices])-1
+    labels = np.array([labels[i] for _ in range(4) for i in indices]) - 1
 
     if ssl:
         for _, _, files in os.walk(unlabeled_image_folder):
             for file in files:
-                images.append(cv2.resize(plt.imread(unlabeled_image_folder + "/" + file), [image_size, image_size]))
+                normal_image = cv2.resize(plt.imread(unlabeled_image_folder + "/" + file), [image_size, image_size])
+                images.append(normal_image)
                 labels = np.append(labels, [-1])
 
-    images = np.array(images) / 255
-    return images, labels
-
-
-def load_test():
-    # load labels
-    labels = []
-    # load images
-    images = []
+    images = np.array(images)
     return images, labels
 
 
 if __name__ == "__main__":
+    preprocess("/BCC", no_hair=True)
+    # preprocess("/BCC", no_hair=False)
     preprocess("/train", no_hair=True)
-    preprocess("/train", no_hair=False)
+    # preprocess("/train", no_hair=False)
