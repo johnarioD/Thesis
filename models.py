@@ -48,7 +48,6 @@ class BaselineModel(pl.LightningModule):
 
     def generic_step(self, train_batch, batch_idx, step_type):
         x, y = train_batch
-        x, y = augment.augment_data(x=x, y=y)
         pred_y = self(x)
         loss = self.cross_entropy(pred_y, y)
         self.accuracy[step_type].update(torch.argmax(pred_y, 1).to('cpu'), y.to('cpu'))

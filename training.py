@@ -13,6 +13,7 @@ from torchsummary import summary
 import pandas as pd
 import cv2
 from matplotlib import pyplot as plt
+import random
 
 PRTRN_NONE = 0
 PRTRN_IMNT = 1
@@ -25,6 +26,7 @@ def pretraining():
 
     torch.manual_seed(0)
     np.random.seed(0)
+    random.seed(0)
 
     imsize = 512
 
@@ -119,7 +121,7 @@ def training(run_name, pretrain=0, ssl=False):
                     model.change_output()
 
             #summary(model, (3, 128, 128))
-            early_stopping = pl.callbacks.early_stopping.EarlyStopping(monitor='val_loss', patience=80, mode='min', min_delta=0.0001, check_on_train_epoch_end=True)
+            early_stopping = pl.callbacks.early_stopping.EarlyStopping(monitor='val_loss', patience=200, mode='min', min_delta=0.0001, check_on_train_epoch_end=True)
             trainer = pl.Trainer(accelerator="gpu", gpus=1, precision=16, max_epochs=1000, callbacks=[early_stopping])
 
             trainer.fit(model=model, train_dataloaders=DataLoader(train_data, batch_size=batch_size), val_dataloaders=DataLoader(test_data, batch_size=batch_size))
