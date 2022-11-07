@@ -215,6 +215,7 @@ def load_train_full(version="hairy", ssl=False, image_size=512):
             images.append(normal_image)
             indices.append(i)
     labels = np.array([labels[i] for _ in range(4) for i in indices]) - 1
+    labels[labels==2] = 1
 
     if ssl:
         for _, _, files in os.walk(unlabeled_image_folder):

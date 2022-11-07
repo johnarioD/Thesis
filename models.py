@@ -7,7 +7,6 @@ import pytorch_lightning as pl
 import contextlib
 from torch.nn import Softmax
 import torch.nn.functional as F
-import data_augmentation as augment
 
 
 class BaselineModel(pl.LightningModule):
@@ -19,10 +18,15 @@ class BaselineModel(pl.LightningModule):
         self.accuracy = {"train": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
                          "test": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
                          "val": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted')}
+        self.auc = {"train": torchmetrics.AUC(reorder=True),
+                    "val": torchmetrics.AUC(reorder=True),
+                    "test": torchmetrics.AUC(reorder=True)}
 
         if pretrained == 0:
+            #self.classifier = handmade.ResNet(handmade.BasicBlock, [2, 2, 2, 2])
             self.classifier = models.resnet18(pretrained=False)
         elif pretrained == 1:
+            #self.classifier = handmade.ResNet(handmade.BasicBlock, [2, 2, 2, 2])
             self.classifier = models.resnet18(pretrained=True)
 
         linear_size = list(self.classifier.children())[-1].in_features
@@ -36,6 +40,9 @@ class BaselineModel(pl.LightningModule):
         self.accuracy = {"train": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
                          "test": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
                          "val": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted')}
+        self.auc = {"train": torchmetrics.AUC(reorder=True),
+                    "val": torchmetrics.AUC(reorder=True),
+                    "test": torchmetrics.AUC(reorder=True)}
 
         linear_size = list(self.classifier.children())[-1].in_features
         self.classifier.fc = nn.Linear(linear_size, self.num_classes)
@@ -51,32 +58,41 @@ class BaselineModel(pl.LightningModule):
         pred_y = self(x)
         loss = self.cross_entropy(pred_y, y)
         self.accuracy[step_type].update(torch.argmax(pred_y, 1).to('cpu'), y.to('cpu'))
-        return loss
+        self.auc[step_type].update(torch.argmax(pred_y, 1).to('cpu'), y.to('cpu'))
+        return {'loss': loss, 'preds': pred_y, "target": y}
 
     def training_step(self, train_batch, batch_idx):
-        loss = self.generic_step(train_batch, batch_idx, step_type="train")
-        self.log("train_loss", loss)
-        return loss
+        out = self.generic_step(train_batch, batch_idx, step_type="train")
+        self.log("train_loss", out['loss'])
+        return out
 
     def training_epoch_end(self, outputs):
         accuracy = self.accuracy['train'].compute()
+        auc = self.auc['train'].compute()
         self.log('train_acc', accuracy, prog_bar=True)
+        self.log('train_auc', auc)
 
     def validation_step(self, val_batch, batch_idx):
-        loss = self.generic_step(val_batch, batch_idx, step_type="val")
-        self.log("val_loss", loss, prog_bar=True)
+        out = self.generic_step(val_batch, batch_idx, step_type="val")
+        self.log("val_loss", out['loss'], prog_bar=True)
+        return out
 
     def validation_epoch_end(self, outputs):
         accuracy = self.accuracy['val'].compute()
+        auc = self.auc['val'].compute()
         self.log('val_acc', accuracy, prog_bar=True)
+        self.log('val_auc', auc)
 
     def test_step(self, test_batch, batch_idx):
-        loss = self.generic_step(test_batch, batch_idx, step_type="test")
-        self.log("test_loss", loss)
+        out = self.generic_step(test_batch, batch_idx, step_type="test")
+        self.log("test_loss", out['loss'])
+        return out
 
     def test_epoch_end(self):
         accuracy = self.accuracy['test'].compute()
+        auc = self.auc['test'].compute()
         self.log('test_acc', accuracy)
+        self.log('test_auc', auc)
 
 
 @contextlib.contextmanager

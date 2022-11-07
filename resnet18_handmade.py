@@ -168,12 +168,12 @@ class ResNet(nn.Module):
         self.bn1 = norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.layer1 = self._make_layer(block, 64, layers[0])
-        self.layer2 = self._make_layer(block, 128, layers[1], stride=2, dilate=replace_stride_with_dilation[0])
-        self.layer3 = self._make_layer(block, 256, layers[2], stride=2, dilate=replace_stride_with_dilation[1])
-        self.layer4 = self._make_layer(block, 512, layers[3], stride=2, dilate=replace_stride_with_dilation[2])
+        self.layer1 = self._make_layer(block, 16, layers[0])
+        self.layer2 = self._make_layer(block, 32, layers[1], stride=2, dilate=replace_stride_with_dilation[0])
+        self.layer3 = self._make_layer(block, 64, layers[2], stride=2, dilate=replace_stride_with_dilation[1])
+        #self.layer4 = self._make_layer(block, 512, layers[3], stride=2, dilate=replace_stride_with_dilation[2])
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(512 * block.expansion, num_classes)
+        self.fc = nn.Linear(64 * block.expansion, num_classes)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -243,7 +243,7 @@ class ResNet(nn.Module):
             x = self.layer1(x)
             x = self.layer2(x)
             x = self.layer3(x)
-            x = self.layer4(x)
+            #x = self.layer4(x)
 
             x = self.avgpool(x)
             x = torch.flatten(x, 1)
@@ -256,80 +256,3 @@ class ResNet(nn.Module):
 
     def __call__(self, x: Tensor) -> Tensor:
         return self._forward_impl(x)
-
-class ResNevus(pl.LightningModule):
-    def __init__(self, class_balance, should_transfer=False):
-        super().__init__()
-        self.classifier = ResNet(BasicBlock, [1,1,1,1], num_classes=2)
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)
-        self.class_balance = class_balance
-        self.num_classes = len(class_balance)
-        self.criterion = nn.CrossEntropyLoss()
-        linear_size = list(self.classifier.children())[-1].in_features
-        self.classifier.fc = nn.Linear(linear_size, self.num_classes)
-        self.train_acc = 0
-        self.val_acc = 0
-        self.test_acc = 0
-
-    def forward(self, x):
-        return self.classifier.forward(x)
-
-    def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=1e-4)
-
-    def on_train_epoch_start(self):
-        self.train_acc = 0
-        self.train_count = 0
-
-    def training_step(self, train_batch, batch_idx):
-        x, y = train_batch
-        pred_y = self(x)
-        loss = self.criterion(pred_y, y)
-        #conf_mat = torchmetrics.ConfusionMatrix(self.num_classes)
-        #conf_mat = conf_mat(torch.argmax(pred_y, 1).to(device='cpu'), torch.argmax(y, 1).to(device='cpu'))
-        #for i in range(self.num_classes):
-        #    self.train_acc += conf_mat[i, i] / (self.num_classes * self.class_balance[i])
-        self.train_acc += torch.sum(torch.argmax(pred_y, 1).to(device='cpu') == torch.argmax(y, 1).to(device='cpu'))
-        self.train_count += torch.argmax(pred_y, 1).shape[0]
-        self.log("train_loss", loss)
-        return loss
-
-    def training_epoch_end(self, outputs):
-        self.train_acc = self.train_acc/self.train_count
-        self.log('train_acc', self.train_acc, prog_bar=True)
-
-    def on_validation_epoch_start(self):
-        self.val_acc = 0
-        self.val_count = 0
-
-    def validation_step(self, val_batch, batch_idx):
-        x, y = val_batch
-        pred_y = self(x)
-        loss = self.criterion(pred_y, y)
-        #conf_mat = torchmetrics.ConfusionMatrix(self.num_classes)
-        #conf_mat = conf_mat(torch.argmax(pred_y, 1).to(device='cpu'), torch.argmax(y, 1).to(device='cpu'))
-        #for i in range(self.num_classes):
-        #    self.val_acc += conf_mat[i, i] / (self.num_classes * self.class_balance[i])
-        self.val_acc += torch.sum(torch.argmax(pred_y, 1).to(device='cpu') == torch.argmax(y, 1).to(device='cpu'))
-        self.val_count += torch.argmax(pred_y, 1).shape[0]
-        self.log("val_loss", loss)
-
-    def validation_epoch_end(self, outputs):
-        self.val_acc = self.val_acc/self.val_count
-        self.log('val_acc', self.val_acc, prog_bar=True)
-
-    def on_test_epoch_start(self):
-        self.test_acc = 0
-
-    def test_step(self, test_batch, batch_idx):
-        x, y = test_batch
-        pred_y = self(x)
-        loss = self.criterion(pred_y, y)
-        conf_mat = torchmetrics.ConfusionMatrix(self.num_classes)
-        conf_mat = conf_mat(torch.argmax(pred_y, 1).to(device='cpu'), torch.argmax(y, 1).to(device='cpu'))
-        for i in range(self.num_classes):
-            self.test_acc += conf_mat[i, i] / (self.num_classes * self.class_balance[i])
-        self.log("test_loss", loss)
-
-    def test_epoch_end(self):
-        self.log('test_acc', self.test_acc)

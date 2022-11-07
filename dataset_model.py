@@ -20,4 +20,4 @@ class bccDataset(Dataset):
 
     def __getitem__(self, index):
         image = self.transform(image=self.X[index].transpose(1, 2, 0))['image']
-        return image.transpose(2,0,1), self.Y[index]
+        return image.transpose(2, 0, 1), self.Y[index]
