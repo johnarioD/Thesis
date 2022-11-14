@@ -139,6 +139,12 @@ def preprocess(folder, no_hair):
             # f, subplt = plt.subplots(5)
             image = np.array(plt.imread(path_to_original / file))
             # subplt[0].imshow(image)
+            if '.png' in file:
+                file_new = re.sub('\.png', '.jpg', file)
+                plt.imsave(path_to_original / file_new, image)
+                os.remove(path_to_original / file)
+                image = plt.imread(path_to_original / file_new)
+                file = file_new
 
             resize_mult = np.uint8(max(min(image.shape[0:2]) // 512, 1))
             intermediate_size = [image.shape[1] // resize_mult, image.shape[0] // resize_mult]
@@ -168,28 +174,6 @@ def preprocess(folder, no_hair):
     print("\rProgress: 100%")
 
 
-def load_train(im_folder, lbl_file=None, image_size=512):
-    images, labels = [], DataFrame()
-
-    # load labels
-    if lbl_file is not None:
-        with open(lbl_file, 'r') as metadata:
-            df = pd.read_csv(metadata)
-            labels = dict(zip(df.id, df.label))
-
-    # load images
-    indices = []
-    for _, _, files in os.walk(im_folder):
-        for file in files:
-            i = int(re.sub('\.jpg|\.JPG', '', file))
-            images.append(cv2.resize(plt.imread(im_folder + "/" + file), [image_size, image_size]))
-            indices.append(i)
-    labels = np.array([labels[i] for i in indices])
-
-    images = np.array(images) / 255
-    return images, labels
-
-
 def load_train_full(version="hairy", ssl=False, image_size=512):
     images, labels = [], DataFrame()
 
@@ -214,8 +198,8 @@ def load_train_full(version="hairy", ssl=False, image_size=512):
             normal_image = cv2.resize(plt.imread(labeled_image_folder + "/" + file), [image_size, image_size])
             images.append(normal_image)
             indices.append(i)
-    labels = np.array([labels[i] for _ in range(4) for i in indices]) - 1
-    labels[labels==2] = 1
+    labels = np.array([labels[i] for i in indices]) - 1
+    labels[labels == 2] = 1
 
     if ssl:
         for _, _, files in os.walk(unlabeled_image_folder):
@@ -229,7 +213,7 @@ def load_train_full(version="hairy", ssl=False, image_size=512):
 
 
 if __name__ == "__main__":
-    preprocess("/BCC", no_hair=True)
+    #preprocess("/BCC", no_hair=True)
     # preprocess("/BCC", no_hair=False)
     preprocess("/train", no_hair=True)
-    # preprocess("/train", no_hair=False)
+    preprocess("/train", no_hair=False)

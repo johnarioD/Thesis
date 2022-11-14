@@ -9,6 +9,11 @@ from torch.nn import Softmax
 import torch.nn.functional as F
 
 
+def to_prob(tensor):
+    d = torch.sum(tensor, dim=1)
+    return torch.div(torch.transpose(tensor,1,0), d)
+
+
 class BaselineModel(pl.LightningModule):
     def __init__(self, num_classes, pretrained=0):
         super().__init__()
@@ -18,9 +23,9 @@ class BaselineModel(pl.LightningModule):
         self.accuracy = {"train": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
                          "test": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
                          "val": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted')}
-        self.auc = {"train": torchmetrics.AUC(reorder=True),
-                    "val": torchmetrics.AUC(reorder=True),
-                    "test": torchmetrics.AUC(reorder=True)}
+        self.auc = {"train": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
+                    "val": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
+                    "test": torchmetrics.AUROC(num_classes=num_classes, pos_label=1)}
 
         if pretrained == 0:
             #self.classifier = handmade.ResNet(handmade.BasicBlock, [2, 2, 2, 2])
@@ -40,9 +45,9 @@ class BaselineModel(pl.LightningModule):
         self.accuracy = {"train": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
                          "test": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
                          "val": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted')}
-        self.auc = {"train": torchmetrics.AUC(reorder=True),
-                    "val": torchmetrics.AUC(reorder=True),
-                    "test": torchmetrics.AUC(reorder=True)}
+        self.auc = {"train": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
+                    "val": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
+                    "test": torchmetrics.AUROC(num_classes=num_classes, pos_label=1)}
 
         linear_size = list(self.classifier.children())[-1].in_features
         self.classifier.fc = nn.Linear(linear_size, self.num_classes)
@@ -58,7 +63,7 @@ class BaselineModel(pl.LightningModule):
         pred_y = self(x)
         loss = self.cross_entropy(pred_y, y)
         self.accuracy[step_type].update(torch.argmax(pred_y, 1).to('cpu'), y.to('cpu'))
-        self.auc[step_type].update(torch.argmax(pred_y, 1).to('cpu'), y.to('cpu'))
+        self.auc[step_type].update(to_prob(pred_y)[0], y)
         return {'loss': loss, 'preds': pred_y, "target": y}
 
     def training_step(self, train_batch, batch_idx):
@@ -70,7 +75,7 @@ class BaselineModel(pl.LightningModule):
         accuracy = self.accuracy['train'].compute()
         auc = self.auc['train'].compute()
         self.log('train_acc', accuracy, prog_bar=True)
-        self.log('train_auc', auc)
+        self.log('train_auc', auc, prog_bar=True)
 
     def validation_step(self, val_batch, batch_idx):
         out = self.generic_step(val_batch, batch_idx, step_type="val")
@@ -88,7 +93,7 @@ class BaselineModel(pl.LightningModule):
         self.log("test_loss", out['loss'])
         return out
 
-    def test_epoch_end(self):
+    def test_epoch_end(self, outputs):
         accuracy = self.accuracy['test'].compute()
         auc = self.auc['test'].compute()
         self.log('test_acc', accuracy)

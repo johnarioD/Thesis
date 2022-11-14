@@ -100,13 +100,13 @@ def training(run_name, pretrain=0, ssl=False):
     X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=split_size)
 
     # sampling
-    class_sample_count = np.unique(Y, return_counts=True)[1]
+    class_sample_count = np.unique(Y_test, return_counts=True)[1]
     class_sample_count[0] = sum(class_sample_count[1:])
     weight = 1. / class_sample_count
-    sample_weights = torch.from_numpy(weight[Y])
-    sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
+    sample_weights = torch.from_numpy(weight[Y_test])
+    test_sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
 
-    test_dataloader = DataLoader(bccDataset(X_test, Y_test), batch_size=batch_size, sampler=sampler)
+    test_dataloader = DataLoader(bccDataset(X_test, Y_test), batch_size=batch_size, sampler=test_sampler)
     # warnings
     # warnings.filterwarnings("ignore")
 
@@ -122,8 +122,19 @@ def training(run_name, pretrain=0, ssl=False):
         k += 1
         X_train, X_val, Y_train, Y_val = train_test_split(X_train, Y_train, test_size=split_size/(1-split_size))
 
-        train_dataloader = DataLoader(bccDataset(X=X_train, Y=Y_train), batch_size=batch_size, sampler=sampler)
-        val_dataloader = DataLoader(bccDataset(X=X_val, Y=Y_val), batch_size=batch_size, sampler=sampler)
+        class_sample_count = np.unique(Y_train, return_counts=True)[1]
+        class_sample_count[0] = sum(class_sample_count[1:])
+        weight = 1. / class_sample_count
+        sample_weights = torch.from_numpy(weight[Y_train])
+        train_sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
+        class_sample_count = np.unique(Y_val, return_counts=True)[1]
+        class_sample_count[0] = sum(class_sample_count[1:])
+        weight = 1. / class_sample_count
+        sample_weights = torch.from_numpy(weight[Y_val])
+        val_sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
+
+        train_dataloader = DataLoader(bccDataset(X=X_train, Y=Y_train), batch_size=batch_size,sampler=train_sampler)
+        val_dataloader = DataLoader(bccDataset(X=X_val, Y=Y_val), batch_size=batch_size, sampler=val_sampler)
         with mlflow.start_run(run_name=run_name + "_" + str(k), experiment_id=experiment.experiment_id):
             if ssl:
                 model = VATModel(pretrained='False')
@@ -133,15 +144,15 @@ def training(run_name, pretrain=0, ssl=False):
                 else:
                     model = BaselineModel.load_from_checkpoint(checkpoint_path="./models/baseline_ISIC_1.chkpt",
                                                                num_classes=2)
-                    model.change_output()
+                    model.change_output(num_classes=2)
 
             # summary(model, (3, 128, 128))
-            early_stopping = EarlyStopping(monitor='train_loss', patience=200, mode='min', min_delta=0.0001, check_on_train_epoch_end=True)
+            early_stopping = EarlyStopping(monitor='train_loss', patience=200, mode='min', min_delta=0.00, check_on_train_epoch_end=True)
 
             trainer = pl.Trainer(accelerator="gpu", gpus=1, precision=16, max_epochs=1000, callbacks=[early_stopping])
 
             trainer.fit(model=model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader)
-            trainer.test(model, dataloader=test_dataloader)
+            trainer.test(model, dataloaders=test_dataloader)
             cross_val_acc['train'] += model.accuracy['train']
             cross_val_acc['val'] += model.accuracy['val']
             cross_val_acc['test'] += model.accuracy['test']
