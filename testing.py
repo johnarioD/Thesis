@@ -2,6 +2,7 @@ import pandas as pd
 from matplotlib import pyplot as plt
 import cv2
 
+
 def new_dataset():
     metadata = pd.read_csv("./data/unsorted/metadata.csv")
     images = metadata.img_id[metadata.diagnostic == "BCC"]

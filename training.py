@@ -112,6 +112,7 @@ def training(run_name, pretrain=0, ssl=False):
 
     # model
     cross_val_acc = {'train': 0, 'val': 0, 'test': 0}
+    cross_val_auc = {'train': 0, 'val': 0, 'test': 0}
 
     # run initialization
     tracker.autolog(silent=True)
@@ -156,14 +157,28 @@ def training(run_name, pretrain=0, ssl=False):
             cross_val_acc['train'] += model.accuracy['train']
             cross_val_acc['val'] += model.accuracy['val']
             cross_val_acc['test'] += model.accuracy['test']
+            cross_val_auc['train'] += model.auc['train']
+            cross_val_auc['val'] += model.auc['val']
+            cross_val_auc['test'] += model.auc['test']
 
     cross_val_acc['train'] /= n_splits
     cross_val_acc['val'] /= n_splits
     cross_val_acc['test'] /= n_splits
+    cross_val_auc['train'] /= n_splits
+    cross_val_auc['val'] /= n_splits
+    cross_val_auc['test'] /= n_splits
     print("Cross-Validation Results:\n----------------------------------------------")
     print(f"Train Accuracy: {100 * cross_val_acc['train']}.2f%\n")
     print(f"Validation Accuracy: {100 * cross_val_acc['val']}.2f%\n")
     print(f"Test Accuracy: {100 * cross_val_acc['test']}.2f%\n")
+    with open("mlruns/custom/"+run_name+"_log.txt",'w')as f:
+        results = "Cross-Validation Results:\n----------------------------------------------"
+        results+=f"Train Accuracy: {100 * cross_val_acc['train']}.2f%\n"
+        results+=f"Validation Accuracy: {100 * cross_val_acc['val']}.2f%\n"
+        results+=f"Test Accuracy: {100 * cross_val_acc['test']}.2f%\n"
+        results+=f"Train Area Under Curve: {cross_val_auc['train']}.2f%\n"
+        results+=f"Validation Area Under Curve: {cross_val_auc['val']}.2f%\n"
+        results+=f"Test Area Under Curve: {cross_val_auc['test']}.2f%\n"
 
 
 if __name__ == "__main__":

@@ -214,6 +214,6 @@ def load_train_full(version="hairy", ssl=False, image_size=512):
 
 if __name__ == "__main__":
     #preprocess("/BCC", no_hair=True)
-    # preprocess("/BCC", no_hair=False)
+    #preprocess("/BCC", no_hair=False)
     preprocess("/train", no_hair=True)
     preprocess("/train", no_hair=False)
