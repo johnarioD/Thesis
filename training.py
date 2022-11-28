@@ -93,6 +93,7 @@ def training(run_name, pretrain=0, ssl=False):
     n_splits = 10
     batch_size = 32
     split_size = 1/n_splits
+    n_cpus=1
 
     # data
     print("Loading Data")
@@ -154,12 +155,12 @@ def training(run_name, pretrain=0, ssl=False):
 
             trainer.fit(model=model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader)
             trainer.test(model, dataloaders=test_dataloader)
-            cross_val_acc['train'] += model.accuracy['train']
-            cross_val_acc['val'] += model.accuracy['val']
-            cross_val_acc['test'] += model.accuracy['test']
-            cross_val_auc['train'] += model.auc['train']
-            cross_val_auc['val'] += model.auc['val']
-            cross_val_auc['test'] += model.auc['test']
+            cross_val_acc['train'] += model.accuracy['train'].compute()
+            cross_val_acc['val'] += model.accuracy['val'].compute()
+            cross_val_acc['test'] += model.accuracy['test'].compute()
+            cross_val_auc['train'] += model.auc['train'].compute()
+            cross_val_auc['val'] += model.auc['val'].compute()
+            cross_val_auc['test'] += model.auc['test'].compute()
 
     cross_val_acc['train'] /= n_splits
     cross_val_acc['val'] /= n_splits
@@ -171,14 +172,15 @@ def training(run_name, pretrain=0, ssl=False):
     print(f"Train Accuracy: {100 * cross_val_acc['train']}.2f%\n")
     print(f"Validation Accuracy: {100 * cross_val_acc['val']}.2f%\n")
     print(f"Test Accuracy: {100 * cross_val_acc['test']}.2f%\n")
-    with open("mlruns/custom/"+run_name+"_log.txt",'w')as f:
-        results = "Cross-Validation Results:\n----------------------------------------------"
-        results+=f"Train Accuracy: {100 * cross_val_acc['train']}.2f%\n"
-        results+=f"Validation Accuracy: {100 * cross_val_acc['val']}.2f%\n"
-        results+=f"Test Accuracy: {100 * cross_val_acc['test']}.2f%\n"
-        results+=f"Train Area Under Curve: {cross_val_auc['train']}.2f%\n"
-        results+=f"Validation Area Under Curve: {cross_val_auc['val']}.2f%\n"
-        results+=f"Test Area Under Curve: {cross_val_auc['test']}.2f%\n"
+    with open("data/logs/"+run_name+"_log.txt", 'w')as f:
+        results = "Cross-Validation Results:\n----------------------------------------------\n"
+        results+=f"Train Accuracy: {100 * cross_val_acc['train']}\n"
+        results+=f"Validation Accuracy: {100 * cross_val_acc['val']}\n"
+        results+=f"Test Accuracy: {100 * cross_val_acc['test']}\n"
+        results+=f"Train Area Under Curve: {cross_val_auc['train']}\n"
+        results+=f"Validation Area Under Curve: {cross_val_auc['val']}\n"
+        results+=f"Test Area Under Curve: {cross_val_auc['test']}\n"
+        f.write(results)
 
 
 if __name__ == "__main__":

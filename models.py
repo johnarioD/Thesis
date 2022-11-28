@@ -19,6 +19,8 @@ class BaselineModel(pl.LightningModule):
         super().__init__()
         self.num_classes = num_classes
 
+        self.softmax = torch.nn.Softmax(dim=1)
+
         self.cross_entropy = nn.CrossEntropyLoss()
         self.accuracy = {"train": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
                          "test": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
@@ -63,7 +65,7 @@ class BaselineModel(pl.LightningModule):
         pred_y = self(x)
         loss = self.cross_entropy(pred_y, y)
         self.accuracy[step_type].update(torch.argmax(pred_y, 1).to('cpu'), y.to('cpu'))
-        self.auc[step_type].update(to_prob(pred_y)[0], y)
+        self.auc[step_type].update(self.softmax(pred_y)[:, 1], y)
         return {'loss': loss, 'preds': pred_y, "target": y}
 
     def training_step(self, train_batch, batch_idx):
@@ -133,7 +135,7 @@ def l2_normalize(d):
 
 
 class VATModel(pl.LightningModule):
-    def __init__(self, num_classes=3, xi=1e-6, eps=1.0, ip=1, a=1, pretrained=False):
+    def __init__(self, xi=1e-6, eps=1.0, ip=1, a=1, num_classes=2, pretrained=0):
         super().__init__()
         self.xi = xi
         self.eps = eps
@@ -143,20 +145,44 @@ class VATModel(pl.LightningModule):
         self.num_classes = num_classes
         self.automatic_optimization = False
 
+        self.softmax = torch.nn.Softmax(dim=1)
+
         self.softmax = Softmax(dim=1)
         self.criterion = kl_div_with_logit
         self.accuracy = {"train": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
                          "test": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
                          "val": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted')}
+        self.auc = {"train": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
+                    "val": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
+                    "test": torchmetrics.AUROC(num_classes=num_classes, pos_label=1)}
 
-        self.classifier = models.resnet18(pretrained=pretrained)
+        if pretrained == 0:
+            #self.classifier = handmade.ResNet(handmade.BasicBlock, [2, 2, 2, 2])
+            self.classifier = models.resnet18(pretrained=False)
+        elif pretrained == 1:
+            #self.classifier = handmade.ResNet(handmade.BasicBlock, [2, 2, 2, 2])
+            self.classifier = models.resnet18(pretrained=True)
+
         linear_size = list(self.classifier.children())[-1].in_features
         self.classifier.fc = nn.Linear(linear_size, self.num_classes)
 
         self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)
 
+    def change_output(self, num_classes=3):
+        self.num_classes = num_classes
+
+        self.accuracy = {"train": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
+                         "test": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
+                         "val": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted')}
+        self.auc = {"train": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
+                    "val": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
+                    "test": torchmetrics.AUROC(num_classes=num_classes, pos_label=1)}
+
+        linear_size = list(self.classifier.children())[-1].in_features
+        self.classifier.fc = nn.Linear(linear_size, self.num_classes)
+
     def forward(self, x):
-        self.classifier(x)
+        return self.classifier(x)
 
     def configure_optimizers(self):
         return self.optimizer
@@ -199,44 +225,54 @@ class VATModel(pl.LightningModule):
         r_vadv = self.compute_adversarial_direction(x, pred_y)
 
         pred_adv = self.classifier(x + r_vadv)
-        #pred_adv = self.softmax(pred_adv)
+        # pred_adv = self.softmax(pred_adv)
         R_adv = self.criterion(pred_y, pred_adv)
 
         # loss = R_adv * self.a
         loss = l + R_adv * self.a
         self.optimizer.zero_grad()
         self.manual_backward(loss)
-        self.accuracy[step_type].update(torch.argmax(pred_y, 1).to('cpu'), torch.argmax(y, 1).to('cpu'))
+        #self.accuracy[step_type].update(torch.argmax(pred_y, 1).to('cpu'), torch.argmax(y, 1).to('cpu'))
+        self.accuracy[step_type].update(torch.argmax(pred_y, 1).to('cpu'), y.to('cpu'))
+        self.auc[step_type].update(self.softmax(pred_y)[:, 1], y)
         self.optimizer.step()
-        return loss, l, R_adv
+        return {'loss': loss, 'preds': pred_y, "target": y, "l": l, 'R_adv': R_adv}
 
     def training_step(self, train_batch, batch_idx):
-        loss, l, R_adv = self.generic_step(train_batch, batch_idx, step_type="train")
-        self.log("train_loss", loss, prog_bar=True)
-        self.log("train_l", l)
-        self.log("train_R_adv", R_adv)
-        return loss
+        out = self.generic_step(train_batch, batch_idx, step_type="train")
+        self.log("train_loss", out['loss'])
+        self.log("train_l", out['l'])
+        self.log("train_R_adv", out['R_adv'])
+        return out
 
     def training_epoch_end(self, outputs):
         accuracy = self.accuracy['train'].compute()
+        auc = self.auc['train'].compute()
         self.log('train_acc', accuracy, prog_bar=True)
+        self.log('train_auc', auc, prog_bar=True)
 
     def validation_step(self, val_batch, batch_idx):
-        loss, l, R_adv = self.generic_step(val_batch, batch_idx, step_type="val")
-        self.log("val_loss", loss)
-        self.log("val_l", l)
-        self.log("val_R_adv", R_adv)
+        out = self.generic_step(val_batch, batch_idx, step_type="val")
+        self.log("val_loss", out['loss'], prog_bar=True)
+        self.log("val_l", out['l'])
+        self.log("val_R_adv", out['R_adv'])
+        return out
 
     def validation_epoch_end(self, outputs):
         accuracy = self.accuracy['val'].compute()
+        auc = self.auc['val'].compute()
         self.log('val_acc', accuracy, prog_bar=True)
+        self.log('val_auc', auc)
 
     def test_step(self, test_batch, batch_idx):
-        loss, l, R_adv = self.generic_step(test_batch, batch_idx, step_type="test")
-        self.log("test_loss", loss)
-        self.log("test_l", l)
-        self.log("test_R_adv", R_adv)
+        out = self.generic_step(test_batch, batch_idx, step_type="test")
+        self.log("test_loss", out['loss'])
+        self.log("test_l", out['l'])
+        self.log("test_R_adv", out['R_adv'])
+        return out
 
-    def test_epoch_end(self):
+    def test_epoch_end(self, outputs):
         accuracy = self.accuracy['test'].compute()
+        auc = self.auc['test'].compute()
         self.log('test_acc', accuracy)
+        self.log('test_auc', auc)
