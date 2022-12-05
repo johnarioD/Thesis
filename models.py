@@ -166,9 +166,6 @@ class VATModel(pl.LightningModule):
         linear_size = list(self.classifier.children())[-1].in_features
         self.classifier.fc = nn.Linear(linear_size, self.num_classes)
 
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)
-        self.optimizer.zero_grad()
-
     def change_output(self, num_classes=3):
         self.num_classes = num_classes
 
@@ -186,7 +183,7 @@ class VATModel(pl.LightningModule):
         return self.classifier(x)
 
     def configure_optimizers(self):
-        return self.optimizer
+        return torch.optim.Adam(self.parameters(), lr=1e-4)
 
     def compute_adversarial_direction(self, x, logit_x):
         dd = torch.randn(x.size()).to(self.device)
@@ -222,13 +219,13 @@ class VATModel(pl.LightningModule):
         # pred_adv = self.softmax(pred_adv)
         #R_adv = self.kl_div(pred_y, pred_adv)
 
-        self.optimizer.zero_grad()
+        self.optimizers().zero_grad()
         l = self.cross_entropy(pred_y, y)
         loss = l #+ R_adv * self.a
         self.manual_backward(loss)
-        #self.accuracy[step_type].update(torch.argmax(pred_y, 1).to('cpu'), y.to('cpu'))
-        #self.auc[step_type].update(self.softmax(pred_y)[:, 1], y.to('cpu'))
-        self.optimizer.step()
+        self.accuracy[step_type].update(torch.argmax(pred_y, 1).to('cpu'), y.to('cpu'))
+        self.auc[step_type].update(self.softmax(pred_y)[:, 1], y.to('cpu'))
+        self.optimizers().step()
         return {'loss': loss, 'preds': pred_y, "target": y, "l": l}
 
     def training_step(self, train_batch, batch_idx):
