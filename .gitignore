@@ -4,3 +4,6 @@ mlruns
 lightning_logs
 .idea
 venv
+copypast.py
+tmp.py
+
