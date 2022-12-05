@@ -90,9 +90,9 @@ def training(run_name, pretrain=0, ssl=False):
     np.random.seed(0)
 
     imsize = 512
-    n_splits = 10
+    n_splits = 1
     batch_size = 32
-    split_size = 1/n_splits
+    split_size = 1/5
     n_cpus=1
 
     # data
@@ -109,7 +109,7 @@ def training(run_name, pretrain=0, ssl=False):
 
     test_dataloader = DataLoader(bccDataset(X_test, Y_test), batch_size=batch_size, sampler=test_sampler)
     # warnings
-    # warnings.filterwarnings("ignore")
+    # warnings.filterwarnings("ignore") 
 
     # model
     cross_val_acc = {'train': 0, 'val': 0, 'test': 0}
@@ -129,6 +129,7 @@ def training(run_name, pretrain=0, ssl=False):
         weight = 1. / class_sample_count
         sample_weights = torch.from_numpy(weight[Y_train])
         train_sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
+        
         class_sample_count = np.unique(Y_val, return_counts=True)[1]
         class_sample_count[0] = sum(class_sample_count[1:])
         weight = 1. / class_sample_count
@@ -139,7 +140,7 @@ def training(run_name, pretrain=0, ssl=False):
         val_dataloader = DataLoader(bccDataset(X=X_val, Y=Y_val), batch_size=batch_size, sampler=val_sampler)
         with mlflow.start_run(run_name=run_name + "_" + str(k), experiment_id=experiment.experiment_id):
             if ssl:
-                model = VATModel(pretrained='False')
+                model = VATModel(pretrained=pretrain, eps=30, a=0)
             else:
                 if pretrain != PRTRN_LESN:
                     model = BaselineModel(num_classes=2, pretrained=pretrain)
@@ -151,7 +152,7 @@ def training(run_name, pretrain=0, ssl=False):
             # summary(model, (3, 128, 128))
             early_stopping = EarlyStopping(monitor='train_loss', patience=200, mode='min', min_delta=0.00, check_on_train_epoch_end=True)
 
-            trainer = pl.Trainer(accelerator="gpu", gpus=1, precision=16, max_epochs=1000, callbacks=[early_stopping])
+            trainer = pl.Trainer(accelerator="gpu", gpus=1, precision=32, max_epochs=1000, callbacks=[early_stopping])
 
             trainer.fit(model=model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader)
             trainer.test(model, dataloaders=test_dataloader)
@@ -169,9 +170,9 @@ def training(run_name, pretrain=0, ssl=False):
     cross_val_auc['val'] /= n_splits
     cross_val_auc['test'] /= n_splits
     print("Cross-Validation Results:\n----------------------------------------------")
-    print(f"Train Accuracy: {100 * cross_val_acc['train']}.2f%\n")
-    print(f"Validation Accuracy: {100 * cross_val_acc['val']}.2f%\n")
-    print(f"Test Accuracy: {100 * cross_val_acc['test']}.2f%\n")
+    print(f"Train Accuracy: {100 * cross_val_acc['train']}\n")
+    print(f"Validation Accuracy: {100 * cross_val_acc['val']}\n")
+    print(f"Test Accuracy: {100 * cross_val_acc['test']}\n")
     with open("data/logs/"+run_name+"_log.txt", 'w')as f:
         results = "Cross-Validation Results:\n----------------------------------------------\n"
         results+=f"Train Accuracy: {100 * cross_val_acc['train']}\n"
@@ -184,7 +185,8 @@ def training(run_name, pretrain=0, ssl=False):
 
 
 if __name__ == "__main__":
-    training(run_name="Resnet18 no pretraining", pretrain=0, ssl=False)
-    training(run_name="Resnet18 imnet pretraining", pretrain=1, ssl=False)
-    training(run_name="Resnet18 lesion pretraining", pretrain=2, ssl=False)
-    # pretraining()
+    #pretraining()
+    #training(run_name="Resnet18 no pretraining", pretrain=0, ssl=False)
+    #training(run_name="Resnet18 imnet pretraining", pretrain=1, ssl=False)
+    #training(run_name="Resnet18 lesion pretraining", pretrain=2, ssl=False)
+    training(run_name="VAT", pretrain=0, ssl=True)

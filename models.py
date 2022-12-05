@@ -129,7 +129,7 @@ def kl_div_with_logit(q_logit, p_logit, average=True):
 
 
 def l2_normalize(d):
-    d_reshaped = d.view(d.size(0) * d.size(1), -1)
+    d_reshaped = d.view(d.size(0), -1)
     d_norm = F.normalize(d_reshaped, dim=1, p=2).view(d.size())
     return d_norm
 
@@ -145,10 +145,10 @@ class VATModel(pl.LightningModule):
         self.num_classes = num_classes
         self.automatic_optimization = False
 
-        self.softmax = torch.nn.Softmax(dim=1)
+        self.softmax =  Softmax(dim=1)
 
-        self.softmax = Softmax(dim=1)
-        self.criterion = kl_div_with_logit
+        self.kl_div = kl_div_with_logit
+        self.cross_entropy = nn.CrossEntropyLoss()
         self.accuracy = {"train": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
                          "test": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
                          "val": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted')}
@@ -167,6 +167,7 @@ class VATModel(pl.LightningModule):
         self.classifier.fc = nn.Linear(linear_size, self.num_classes)
 
         self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)
+        self.optimizer.zero_grad()
 
     def change_output(self, num_classes=3):
         self.num_classes = num_classes
@@ -211,45 +212,37 @@ class VATModel(pl.LightningModule):
         x, y = train_batch
         unlabeled_idx = y == -1
 
-        # Create random unit tensor
-        # if batch_idx == 0:
-        d = torch.rand(x.shape).to(x.device)
-        d.requires_grad = True
-
         pred_y = self.classifier(x)
         # pred_y = self.softmax(pred_y)
         y[unlabeled_idx] = torch.argmax(pred_y, 1)[unlabeled_idx]
-        y = F.one_hot(y, num_classes=self.num_classes).type(torch.float16)
-        l = self.criterion(pred_y, y)
+        l = self.cross_entropy(pred_y, y)
 
-        r_vadv = self.compute_adversarial_direction(x, pred_y)
+        #r_vadv = self.compute_adversarial_direction(x, pred_y)
 
-        pred_adv = self.classifier(x + r_vadv)
+        #pred_adv = self.classifier(x + r_vadv)
         # pred_adv = self.softmax(pred_adv)
-        R_adv = self.criterion(pred_y, pred_adv)
+        #R_adv = self.kl_div(pred_y, pred_adv)
 
-        # loss = R_adv * self.a
-        loss = l + R_adv * self.a
+        loss = l #+ R_adv * self.a
         self.optimizer.zero_grad()
         self.manual_backward(loss)
-        #self.accuracy[step_type].update(torch.argmax(pred_y, 1).to('cpu'), torch.argmax(y, 1).to('cpu'))
         self.accuracy[step_type].update(torch.argmax(pred_y, 1).to('cpu'), y.to('cpu'))
-        self.auc[step_type].update(self.softmax(pred_y)[:, 1], y)
+        self.auc[step_type].update(self.softmax(pred_y)[:, 1], y.to('cpu'))
         self.optimizer.step()
         return {'loss': loss, 'preds': pred_y, "target": y, "l": l, 'R_adv': R_adv}
 
     def training_step(self, train_batch, batch_idx):
         out = self.generic_step(train_batch, batch_idx, step_type="train")
         self.log("train_loss", out['loss'])
-        self.log("train_l", out['l'])
-        self.log("train_R_adv", out['R_adv'])
+        self.log("train_l", out['l'], prog_bar=True)
+        self.log("train_R_adv", out['R_adv'], prog_bar=True)
         return out
 
     def training_epoch_end(self, outputs):
         accuracy = self.accuracy['train'].compute()
-        auc = self.auc['train'].compute()
+        auc = self.auc['train'].to('cpu').compute()
         self.log('train_acc', accuracy, prog_bar=True)
-        self.log('train_auc', auc, prog_bar=True)
+        self.log('train_auc', auc)
 
     def validation_step(self, val_batch, batch_idx):
         out = self.generic_step(val_batch, batch_idx, step_type="val")
@@ -260,7 +253,7 @@ class VATModel(pl.LightningModule):
 
     def validation_epoch_end(self, outputs):
         accuracy = self.accuracy['val'].compute()
-        auc = self.auc['val'].compute()
+        auc = self.auc['val'].to('cpu').compute()
         self.log('val_acc', accuracy, prog_bar=True)
         self.log('val_auc', auc)
 
@@ -273,6 +266,6 @@ class VATModel(pl.LightningModule):
 
     def test_epoch_end(self, outputs):
         accuracy = self.accuracy['test'].compute()
-        auc = self.auc['test'].compute()
+        auc = self.auc['test'].to('cpu').compute()
         self.log('test_acc', accuracy)
         self.log('test_auc', auc)
