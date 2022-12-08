@@ -174,7 +174,7 @@ def preprocess(folder, no_hair):
     print("\rProgress: 100%")
 
 
-def load_train_full(version="hairy", ssl=False, image_size=512):
+def load_train(version="hairy", ssl=False, image_size=512):
     images, labels = [], DataFrame()
 
     lbl_file = "data/unprocessed/BCC_tags.csv"
@@ -184,29 +184,30 @@ def load_train_full(version="hairy", ssl=False, image_size=512):
     else:
         labeled_image_folder = "data/preprocessed/BCC"
         unlabeled_image_folder = "data/preprocessed/train"
+        
+    if not ssl:
+        # load labels
+        with open(lbl_file, 'r') as metadata:
+            df = pd.read_csv(metadata)
+            labels = dict(zip(df.id, df.label))
 
-    # load labels
-    with open(lbl_file, 'r') as metadata:
-        df = pd.read_csv(metadata)
-        labels = dict(zip(df.id, df.label))
-
-    # load labeled images
-    indices = []
-    for _, _, files in os.walk(labeled_image_folder):
-        for file in files:
-            i = int(re.sub('\.jpg|\.JPG', '', file))
-            normal_image = cv2.resize(plt.imread(labeled_image_folder + "/" + file), [image_size, image_size])
-            images.append(normal_image)
-            indices.append(i)
-    labels = np.array([labels[i] for i in indices]) - 1
-    labels[labels == 2] = 1
-
-    if ssl:
+        # load labeled images
+        indices = []
+        for _, _, files in os.walk(labeled_image_folder):
+            for file in files:
+                i = int(re.sub('\.jpg|\.JPG', '', file))
+                normal_image = cv2.resize(plt.imread(labeled_image_folder + "/" + file), [image_size, image_size])
+                images.append(normal_image)
+                indices.append(i)
+        labels = np.array([labels[i] for i in indices]) - 1
+        labels[labels == 2] = 1
+    else:
         for _, _, files in os.walk(unlabeled_image_folder):
             for file in files:
                 normal_image = cv2.resize(plt.imread(unlabeled_image_folder + "/" + file), [image_size, image_size])
                 images.append(normal_image)
                 labels = np.append(labels, [-1])
+        labels = np.zeros(shape=(len(images),)) - 1
 
     images = np.array(images)
     return images, labels

@@ -143,7 +143,7 @@ class VATModel(pl.LightningModule):
         self.a = a
 
         self.num_classes = num_classes
-        self.automatic_optimization = False
+        self.automatic_optimization = True
 
         self.softmax =  Softmax(dim=1)
 
@@ -205,7 +205,7 @@ class VATModel(pl.LightningModule):
         return r_adv
 
     def generic_step(self, train_batch, batch_idx, step_type):
-        torch.set_grad_enabled(True)
+        #torch.set_grad_enabled(True)
         x, y = train_batch
         unlabeled_idx = y == -1
 
@@ -219,13 +219,13 @@ class VATModel(pl.LightningModule):
         # pred_adv = self.softmax(pred_adv)
         #R_adv = self.kl_div(pred_y, pred_adv)
 
-        self.optimizers().zero_grad()
+        #self.optimizers().zero_grad()
         l = self.cross_entropy(pred_y, y)
         loss = l #+ R_adv * self.a
-        self.manual_backward(loss)
+        #self.manual_backward(loss)
         self.accuracy[step_type].update(torch.argmax(pred_y, 1).to('cpu'), y.to('cpu'))
         self.auc[step_type].update(self.softmax(pred_y)[:, 1], y.to('cpu'))
-        self.optimizers().step()
+        #self.optimizers().step()
         return {'loss': loss, 'preds': pred_y, "target": y, "l": l}
 
     def training_step(self, train_batch, batch_idx):

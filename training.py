@@ -1,6 +1,6 @@
 import mlflow
 import torch
-from torch.utils.data import DataLoader, WeightedRandomSampler
+from torch.utils.data import DataLoader, WeightedRandomSampler, ConcatDataset
 import pytorch_lightning as pl
 from models import BaselineModel, VATModel
 import preprocessing as data
@@ -89,33 +89,36 @@ def training(run_name, pretrain=0, ssl=False):
     torch.manual_seed(0)
     np.random.seed(0)
 
+    # Training Params
     imsize = 512
     n_splits = 1
     batch_size = 32
     split_size = 1/5
     n_cpus=1
 
-    # data
+    # Non-ssl data
     print("Loading Data")
-    X, Y = data.load_train_full(version="hairy", ssl=ssl, image_size=imsize)
+    X, Y = data.load_train(version="hairy", ssl=False, image_size=imsize)
     X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=split_size)
 
-    # sampling
+    # Sampling
     class_sample_count = np.unique(Y_test, return_counts=True)[1]
     class_sample_count[0] = sum(class_sample_count[1:])
     weight = 1. / class_sample_count
     sample_weights = torch.from_numpy(weight[Y_test])
     test_sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
 
-    test_dataloader = DataLoader(bccDataset(X_test, Y_test), batch_size=batch_size, sampler=test_sampler)
-    # warnings
-    # warnings.filterwarnings("ignore") 
+    test_dataset = bccDataset(X_test, Y_test)
+    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, sampler=test_sampler)
 
-    # model
+    # Warnings
+    # warnings.filterwarnings("ignore")
+
+    # Model metrics
     cross_val_acc = {'train': 0, 'val': 0, 'test': 0}
     cross_val_auc = {'train': 0, 'val': 0, 'test': 0}
 
-    # run initialization
+    # Run Initialization
     tracker.autolog(silent=True)
 
     # k-folds
@@ -136,8 +139,17 @@ def training(run_name, pretrain=0, ssl=False):
         sample_weights = torch.from_numpy(weight[Y_val])
         val_sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
 
-        train_dataloader = DataLoader(bccDataset(X=X_train, Y=Y_train), batch_size=batch_size,sampler=train_sampler)
-        val_dataloader = DataLoader(bccDataset(X=X_val, Y=Y_val), batch_size=batch_size, sampler=val_sampler)
+        train_dataset = bccDataset(X=X_train, Y=Y_train)
+        val_dataset = bccDataset(X=X_val, Y=Y_val)
+
+        if False:
+            X, Y = data.load_train(version="hairy", ssl=True, image_size=imsize)
+            X_train, X_val, Y_train, Y_val = train_test_split(X, Y, test_size=split_size)
+            train_dataset = ConcatDataset([train_dataset, bccDataset(X=X_train, Y=Y_train)])
+            val_dataset = ConcatDataset([val_dataset, bccDataset(X=X_val, Y=Y_val)])
+
+        train_dataloader = DataLoader(train_dataset, batch_size=batch_size, sampler=train_sampler)
+        val_dataloader = DataLoader(val_dataset, batch_size=batch_size, sampler=val_sampler)
         with mlflow.start_run(run_name=run_name + "_" + str(k), experiment_id=experiment.experiment_id):
             if ssl:
                 model = VATModel(pretrained=pretrain, eps=30, a=0)
