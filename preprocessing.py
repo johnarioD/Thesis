@@ -175,7 +175,7 @@ def preprocess(folder, no_hair):
 
 
 def load_train(version="hairy", ssl=False, image_size=512):
-    images, labels = [], DataFrame()
+    images = []
 
     lbl_file = "data/unprocessed/BCC_tags.csv"
     if version == "hairy":
@@ -184,12 +184,11 @@ def load_train(version="hairy", ssl=False, image_size=512):
     else:
         labeled_image_folder = "data/preprocessed/BCC"
         unlabeled_image_folder = "data/preprocessed/train"
-        
+
     if not ssl:
         # load labels
-        with open(lbl_file, 'r') as metadata:
-            df = pd.read_csv(metadata)
-            labels = dict(zip(df.id, df.label))
+        df = pd.read_csv(lbl_file)
+        labels = dict(zip(df.id, df.label))
 
         # load labeled images
         indices = []
@@ -206,7 +205,6 @@ def load_train(version="hairy", ssl=False, image_size=512):
             for file in files:
                 normal_image = cv2.resize(plt.imread(unlabeled_image_folder + "/" + file), [image_size, image_size])
                 images.append(normal_image)
-                labels = np.append(labels, [-1])
         labels = np.zeros(shape=(len(images),)) - 1
 
     images = np.array(images)
@@ -214,7 +212,9 @@ def load_train(version="hairy", ssl=False, image_size=512):
 
 
 if __name__ == "__main__":
+    #load_train(ssl=True)
     #preprocess("/BCC", no_hair=True)
     #preprocess("/BCC", no_hair=False)
-    preprocess("/train", no_hair=True)
-    preprocess("/train", no_hair=False)
+    #preprocess("/train", no_hair=True)
+    #preprocess("/train", no_hair=False)
+    pass

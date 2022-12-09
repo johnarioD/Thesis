@@ -9,11 +9,6 @@ from torch.nn import Softmax
 import torch.nn.functional as F
 
 
-def to_prob(tensor):
-    d = torch.sum(tensor, dim=1)
-    return torch.div(torch.transpose(tensor,1,0), d)
-
-
 class BaselineModel(pl.LightningModule):
     def __init__(self, num_classes, pretrained=0):
         super().__init__()
@@ -39,17 +34,8 @@ class BaselineModel(pl.LightningModule):
         linear_size = list(self.classifier.children())[-1].in_features
         self.classifier.fc = nn.Linear(linear_size, self.num_classes)
 
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)
-
-    def change_output(self, num_classes=3):
+    def change_output(self, num_classes=2):
         self.num_classes = num_classes
-
-        self.accuracy = {"train": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
-                         "test": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
-                         "val": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted')}
-        self.auc = {"train": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
-                    "val": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
-                    "test": torchmetrics.AUROC(num_classes=num_classes, pos_label=1)}
 
         linear_size = list(self.classifier.children())[-1].in_features
         self.classifier.fc = nn.Linear(linear_size, self.num_classes)
@@ -58,7 +44,7 @@ class BaselineModel(pl.LightningModule):
         return self.classifier(x)
 
     def configure_optimizers(self):
-        return self.optimizer
+        return torch.optim.Adam(self.parameters(), lr=1e-4)
 
     def generic_step(self, train_batch, batch_idx, step_type):
         x, y = train_batch
