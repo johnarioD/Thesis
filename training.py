@@ -207,7 +207,7 @@ def training(run_name, pretrain=0, ssl=False):
 
 if __name__ == "__main__":
     #pretraining()
-    #training(run_name="Resnet18 no pretraining", pretrain=PRTRN_NONE, ssl=False)
+    training(run_name="Resnet18 no pretraining", pretrain=PRTRN_NONE, ssl=False)
     #training(run_name="Resnet18 imnet pretraining", pretrain=PRTRN_IMNT, ssl=False)
     #training(run_name="Resnet18 lesion pretraining", pretrain=PRTRN_LESN, ssl=False)
-    training(run_name="VAT", pretrain=PRTRN_NONE, ssl=True)
+    #training(run_name="VAT", pretrain=PRTRN_NONE, ssl=True)
