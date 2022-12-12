@@ -47,7 +47,7 @@ def pretraining():
         images.append(
             cv2.resize(plt.imread("./data/preprocessed_hairy" + "/ISIC2020/" + file + ".jpg"), [imsize, imsize]))
         indices.append(file)
-    X = np.array(images) / 255
+    X = np.array(images) // 255
     Y = np.array([Y[i] for i in indices])
 
     kf = KFold(n_splits=5)
@@ -97,14 +97,11 @@ def training(run_name, pretrain=0, ssl=False):
     n_cpus=1
 
     # Non-ssl data
-    print("Loading Data")
     X, Y = data.load_train(version="hairy", ssl=False, image_size=imsize)
     X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=split_size)
 
     # Sampling
-    class_sample_count = np.unique(Y_test, return_counts=True)[1]
-    #class_sample_count[0] = sum(class_sample_count[1:])
-    weight = len(Y_test)/(class_sample_count)
+    weight = len(Y_test)/np.unique(Y_test, return_counts=True)[1]
     sample_weights = torch.from_numpy(weight[Y_test])
     test_sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
 
@@ -122,32 +119,46 @@ def training(run_name, pretrain=0, ssl=False):
     tracker.autolog(silent=True)
 
     # k-folds
-    print("Spliting K-folds")
     for k in range(n_splits):
+        print("Loading Data")
         X_train, X_val, Y_train, Y_val = train_test_split(X_train, Y_train, test_size=split_size/(1-split_size))
         train_dataset = bccDataset(X=X_train, Y=Y_train)
         val_dataset = bccDataset(X=X_val, Y=Y_val)
+        train_size = len(Y_train)
+        train_samples_per_class = np.unique(Y_train, return_counts=True)[1]
+        val_size = len(Y_val)
+        val_samples_per_class = np.unique(Y_val, return_counts=True)[1]
 
-        if ssl:
+        if False:
             X, Y = data.load_train(version="hairy", ssl=True, image_size=imsize)
             X_train, X_val, Y_train, Y_val = train_test_split(X, Y, test_size=split_size)
             train_dataset = ConcatDataset([train_dataset, bccDataset(X=X_train, Y=Y_train)])
             val_dataset = ConcatDataset([val_dataset, bccDataset(X=X_val, Y=Y_val)])
+            train_size += len(Y_train)
+            train_samples_per_class = np.insert(train_samples_per_class, 0, len(Y_train))
+            val_size += len(Y_val)
+            val_samples_per_class = np.insert(val_samples_per_class, 0, len(Y_val))
 
-        class_sample_count = np.unique(train_dataset.Y, return_counts=True)[1]
-        #class_sample_count[0] = sum(class_sample_count[1:])
-        weight = len(Y_train)/(class_sample_count)
-        sample_weights = torch.from_numpy(weight[Y_train])
+        targets = []
+        for _, target in train_dataset:
+            targets.append(target)
+        targets = np.array(targets)
+        weight = train_size/train_samples_per_class
+        sample_weights = torch.tensor([weight[t]+1 for t in targets])
         train_sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
         
-        class_sample_count = np.unique(val_dataset.Y, return_counts=True)[1]
-        #class_sample_count[0] = sum(class_sample_count[1:])
-        weight = len(Y_val)/(class_sample_count)
-        sample_weights = torch.from_numpy(weight[Y_val])
+        targets = []
+        for _, target in val_dataset:
+            targets.append(target)
+        targets = np.array(targets)
+        weight = val_size/val_samples_per_class
+        sample_weights = torch.tensor([weight[t]+1 for t in targets])
         val_sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
 
         train_dataloader = DataLoader(train_dataset, batch_size=batch_size, sampler=train_sampler)
         val_dataloader = DataLoader(val_dataset, batch_size=batch_size, sampler=val_sampler)
+
+        print("Model Setup")
         with mlflow.start_run(run_name=run_name + "_" + str(k), experiment_id=experiment.experiment_id):
             if ssl:
                 model = VATModel(pretrained=pretrain, eps=30, a=0)
@@ -196,7 +207,7 @@ def training(run_name, pretrain=0, ssl=False):
 
 if __name__ == "__main__":
     #pretraining()
-    training(run_name="Resnet18 no pretraining", pretrain=PRTRN_NONE, ssl=False)
+    #training(run_name="Resnet18 no pretraining", pretrain=PRTRN_NONE, ssl=False)
     #training(run_name="Resnet18 imnet pretraining", pretrain=PRTRN_IMNT, ssl=False)
     #training(run_name="Resnet18 lesion pretraining", pretrain=PRTRN_LESN, ssl=False)
-    #training(run_name="VAT", pretrain=PRTRN_NONE, ssl=True)
+    training(run_name="VAT", pretrain=PRTRN_NONE, ssl=True)

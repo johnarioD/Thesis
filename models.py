@@ -24,12 +24,7 @@ class BaselineModel(pl.LightningModule):
                     "val": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
                     "test": torchmetrics.AUROC(num_classes=num_classes, pos_label=1)}
 
-        if pretrained == 0:
-            #self.classifier = handmade.ResNet(handmade.BasicBlock, [2, 2, 2, 2])
-            self.classifier = models.resnet18(pretrained=False)
-        elif pretrained == 1:
-            #self.classifier = handmade.ResNet(handmade.BasicBlock, [2, 2, 2, 2])
-            self.classifier = models.resnet18(pretrained=True)
+        self.classifier = models.resnet18(pretrained=pretrained==1)
 
         linear_size = list(self.classifier.children())[-1].in_features
         self.classifier.fc = nn.Linear(linear_size, self.num_classes)
@@ -48,7 +43,7 @@ class BaselineModel(pl.LightningModule):
 
     def generic_step(self, train_batch, batch_idx, step_type):
         x, y = train_batch
-        pred_y = self(x)
+        pred_y = self.softmax(self(x))
         loss = self.cross_entropy(pred_y, y)
         self.accuracy[step_type].update(torch.argmax(pred_y, 1).to('cpu'), y.to('cpu'))
         self.auc[step_type].update(self.softmax(pred_y)[:, 1], y)
@@ -222,10 +217,10 @@ class VATModel(pl.LightningModule):
         return out
 
     def training_epoch_end(self, outputs):
-        #accuracy = self.accuracy['train'].compute()
-        #auc = self.auc['train'].to('cpu').compute()
-        #self.log('train_acc', accuracy, prog_bar=True)
-        #self.log('train_auc', auc)
+        accuracy = self.accuracy['train'].compute()
+        auc = self.auc['train'].to('cpu').compute()
+        self.log('train_acc', accuracy, prog_bar=True)
+        self.log('train_auc', auc)
         pass
 
     def validation_step(self, val_batch, batch_idx):
@@ -236,10 +231,10 @@ class VATModel(pl.LightningModule):
         return out
 
     def validation_epoch_end(self, outputs):
-        #accuracy = self.accuracy['val'].compute()
-        #auc = self.auc['val'].to('cpu').compute()
-        #self.log('val_acc', accuracy, prog_bar=True)
-        #self.log('val_auc', auc)
+        accuracy = self.accuracy['val'].compute()
+        auc = self.auc['val'].to('cpu').compute()
+        self.log('val_acc', accuracy, prog_bar=True)
+        self.log('val_auc', auc)
         pass
 
     def test_step(self, test_batch, batch_idx):
@@ -250,8 +245,8 @@ class VATModel(pl.LightningModule):
         return out
 
     def test_epoch_end(self, outputs):
-        #accuracy = self.accuracy['test'].compute()
-        #auc = self.auc['test'].to('cpu').compute()
-        #self.log('test_acc', accuracy)
-        #self.log('test_auc', auc)
+        accuracy = self.accuracy['test'].compute()
+        auc = self.auc['test'].to('cpu').compute()
+        self.log('test_acc', accuracy)
+        self.log('test_auc', auc)
         pass
