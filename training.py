@@ -129,7 +129,7 @@ def training(run_name, pretrain=0, ssl=False):
         val_size = len(Y_val)
         val_samples_per_class = np.unique(Y_val, return_counts=True)[1]
 
-        if False:
+        if ssl:
             X, Y = data.load_train(version="hairy", ssl=True, image_size=imsize)
             X_train, X_val, Y_train, Y_val = train_test_split(X, Y, test_size=split_size)
             train_dataset = ConcatDataset([train_dataset, bccDataset(X=X_train, Y=Y_train)])
@@ -141,18 +141,18 @@ def training(run_name, pretrain=0, ssl=False):
 
         targets = []
         for _, target in train_dataset:
-            targets.append(target)
+            targets.append(target+1)
         targets = np.array(targets)
         weight = train_size/train_samples_per_class
-        sample_weights = torch.tensor([weight[t]+1 for t in targets])
+        sample_weights = torch.from_numpy(weight[targets])
         train_sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
         
         targets = []
         for _, target in val_dataset:
-            targets.append(target)
+            targets.append(target+1)
         targets = np.array(targets)
         weight = val_size/val_samples_per_class
-        sample_weights = torch.tensor([weight[t]+1 for t in targets])
+        sample_weights = torch.from_numpy(weight[targets])
         val_sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
 
         train_dataloader = DataLoader(train_dataset, batch_size=batch_size, sampler=train_sampler)
@@ -207,7 +207,7 @@ def training(run_name, pretrain=0, ssl=False):
 
 if __name__ == "__main__":
     #pretraining()
-    training(run_name="Resnet18 no pretraining", pretrain=PRTRN_NONE, ssl=False)
+    #training(run_name="Resnet18 no pretraining", pretrain=PRTRN_NONE, ssl=False)
     #training(run_name="Resnet18 imnet pretraining", pretrain=PRTRN_IMNT, ssl=False)
     #training(run_name="Resnet18 lesion pretraining", pretrain=PRTRN_LESN, ssl=False)
-    #training(run_name="VAT", pretrain=PRTRN_NONE, ssl=True)
+    training(run_name="VAT", pretrain=PRTRN_IMNT, ssl=True)

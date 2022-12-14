@@ -38,6 +38,13 @@ class BaselineModel(pl.LightningModule):
     def change_output(self, num_classes=2):
         self.num_classes = num_classes
 
+        self.accuracy = {"train": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
+                         "test": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
+                         "val": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted')}
+        self.auc = {"train": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
+                    "val": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
+                    "test": torchmetrics.AUROC(num_classes=num_classes, pos_label=1)}
+
         linear_size = list(self.classifier.children())[-1].in_features
         self.classifier.fc = nn.Linear(linear_size, self.num_classes)
 
@@ -148,7 +155,7 @@ class VATModel(pl.LightningModule):
         self.a = a
 
         self.num_classes = num_classes
-        self.automatic_optimization = True
+        self.automatic_optimization = False
 
         self.softmax =  Softmax(dim=1)
 
@@ -222,31 +229,31 @@ class VATModel(pl.LightningModule):
         return r_adv
 
     def generic_step(self, train_batch, batch_idx, step_type):
-        #torch.set_grad_enabled(True)
+        torch.set_grad_enabled(True)
         x, y = train_batch
         unlabeled_idx = y == -1
 
         pred_y = self.classifier(x)
-        # pred_y = self.softmax(pred_y)
+        pred_y = self.softmax(pred_y)
         y[unlabeled_idx] = torch.argmax(pred_y, 1)[unlabeled_idx]
 
-        #r_vadv = self.compute_adversarial_direction(x, pred_y)
+        r_vadv = self.compute_adversarial_direction(x, pred_y)
 
-        #pred_adv = self.classifier(x + r_vadv)
-        # pred_adv = self.softmax(pred_adv)
-        #R_adv = self.kl_div(pred_y, pred_adv)
+        pred_adv = self.classifier(x + r_vadv)
+        pred_adv = self.softmax(pred_adv)
+        R_adv = self.kl_div(pred_y, pred_adv)
 
-        #self.optimizers().zero_grad()
+        self.optimizers().zero_grad()
         l = self.cross_entropy(pred_y, y)
-        loss = l #+ R_adv * self.a
-        #self.manual_backward(loss)
+        loss = l + R_adv * self.a
+        self.manual_backward(loss)
         self.accuracy[step_type].update(torch.argmax(pred_y, 1).to('cpu'), y.to('cpu'))
-        self.auc[step_type].update(self.softmax(pred_y)[:, 1], y.to('cpu'))
+        self.auc[step_type].update(self.softmax(pred_y)[:, 1], y)
         self.num_steps[step_type]+=1
         self.cum_loss[step_type]+=loss
         self.cum_l[step_type]+=l
-        #self.cum_R_adv[step_type]+=R_adv
-        #self.optimizers().step()
+        self.cum_R_adv[step_type]+=R_adv
+        self.optimizers().step()
         return {'loss': loss, 'preds': pred_y, "target": y, "l": l}
 
     def training_epoch_start(self):
@@ -262,12 +269,12 @@ class VATModel(pl.LightningModule):
     def training_epoch_end(self, outputs):
         self.cum_loss['train'] /= self.num_steps['train']
         self.cum_l['train'] /= self.num_steps['train']
-        #self.cum_R_adv['train'] /= self.num_steps['train']
+        self.cum_R_adv['train'] /= self.num_steps['train']
         accuracy = self.accuracy['train'].compute()
         auc = self.auc['train'].compute()
         self.log("train_loss", self.cum_loss['train'])
         self.log("train_l", self.cum_l['train'])
-        #self.log("train_R_adv", self.cum_R_adv['train'])
+        self.log("train_R_adv", self.cum_R_adv['train'])
         self.log('train_acc', accuracy, prog_bar=True)
         self.log('train_auc', auc, prog_bar=True)
 
@@ -284,12 +291,12 @@ class VATModel(pl.LightningModule):
     def validation_epoch_end(self, outputs):
         self.cum_loss['val'] /= self.num_steps['val']
         self.cum_l['val'] /= self.num_steps['val']
-        #self.cum_R_adv['val'] /= self.num_steps['val']
+        self.cum_R_adv['val'] /= self.num_steps['val']
         accuracy = self.accuracy['val'].compute()
         auc = self.auc['val'].compute()
         self.log("val_loss", self.cum_loss['val'], prog_bar=True)
         self.log("val_l", self.cum_l['val'])
-        #self.log("val_R_adv", self.cum_R_adv['val'])
+        self.log("val_R_adv", self.cum_R_adv['val'])
         self.log('val_acc', accuracy, prog_bar=True)
         self.log('val_auc', auc)
 
