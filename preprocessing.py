@@ -174,11 +174,11 @@ def preprocess(folder, no_hair):
     print("\rProgress: 100%")
 
 
-def load_train(version="hairy", ssl=False, image_size=512):
+def load_train(hair=True, ssl=False, image_size=512, merge_classes=True):
     images = []
 
     lbl_file = "data/unprocessed/BCC_tags.csv"
-    if version == "hairy":
+    if hair:
         labeled_image_folder = "data/preprocessed_hairy/BCC"
         unlabeled_image_folder = "data/preprocessed_hairy/train"
     else:
@@ -199,7 +199,8 @@ def load_train(version="hairy", ssl=False, image_size=512):
                 images.append(normal_image)
                 indices.append(i)
         labels = np.array([labels[i] for i in indices]) - 1
-        labels[labels == 2] = 1
+        if(merge_classes):
+            labels[labels == 2] = 1 
     else:
         for _, _, files in os.walk(unlabeled_image_folder):
             for file in files:

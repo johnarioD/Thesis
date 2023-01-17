@@ -17,18 +17,21 @@ class BaselineModel(pl.LightningModule):
         self.softmax = torch.nn.Softmax(dim=1)
 
         self.cross_entropy = nn.CrossEntropyLoss()
+
         self.num_steps = {"train":0,
                         "val":0,
                         "test":0}
         self.cum_loss = {"train":0,
                         "val":0,
                         "test":0}
+
         self.accuracy = {"train": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
                          "test": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
                          "val": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted')}
-        self.auc = {"train": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
-                    "val": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
-                    "test": torchmetrics.AUROC(num_classes=num_classes, pos_label=1)}
+        if self.num_classes==2:
+            self.auc = {"train": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
+                        "val": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
+                        "test": torchmetrics.AUROC(num_classes=num_classes, pos_label=1)}
 
         self.classifier = models.resnet18(pretrained=pretrained==1)
 
@@ -41,9 +44,10 @@ class BaselineModel(pl.LightningModule):
         self.accuracy = {"train": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
                          "test": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
                          "val": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted')}
-        self.auc = {"train": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
-                    "val": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
-                    "test": torchmetrics.AUROC(num_classes=num_classes, pos_label=1)}
+        if self.num_classes==2:
+            self.auc = {"train": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
+                        "val": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
+                        "test": torchmetrics.AUROC(num_classes=num_classes, pos_label=1)}
 
         linear_size = list(self.classifier.children())[-1].in_features
         self.classifier.fc = nn.Linear(linear_size, self.num_classes)
@@ -59,7 +63,8 @@ class BaselineModel(pl.LightningModule):
         pred_y = self.softmax(self(x))
         loss = self.cross_entropy(pred_y, y)
         self.accuracy[step_type].update(torch.argmax(pred_y, 1).to('cpu'), y.to('cpu'))
-        self.auc[step_type].update(self.softmax(pred_y)[:, 1], y)
+        if self.num_classes == 2:
+            self.auc[step_type].update(self.softmax(pred_y)[:, 1], y)
         self.num_steps[step_type]+=1
         self.cum_loss[step_type]+=loss
         return {'loss': loss, 'preds': pred_y, "target": y}
@@ -75,10 +80,11 @@ class BaselineModel(pl.LightningModule):
     def training_epoch_end(self, outputs):
         self.cum_loss['train'] /= self.num_steps['train']
         accuracy = self.accuracy['train'].compute()
-        auc = self.auc['train'].compute()
         self.log("train_loss", self.cum_loss['train'])
         self.log('train_acc', accuracy, prog_bar=True)
-        self.log('train_auc', auc, prog_bar=True)
+        if self.num_classes == 2:
+            auc = self.auc['train'].compute()
+            self.log('train_auc', auc, prog_bar=True)
 
     def validation_epoch_start(self):
         self.cum_loss['val']=0
@@ -91,10 +97,11 @@ class BaselineModel(pl.LightningModule):
     def validation_epoch_end(self, outputs):
         self.cum_loss['val'] /= self.num_steps['val']
         accuracy = self.accuracy['val'].compute()
-        auc = self.auc['val'].compute()
         self.log("val_loss", self.cum_loss['val'], prog_bar=True)
         self.log('val_acc', accuracy, prog_bar=True)
-        self.log('val_auc', auc)
+        if self.num_classes == 2:
+            auc = self.auc['val'].compute()
+            self.log('val_auc', auc)
 
     def test_epoch_start(self):
         self.cum_loss['test']=0
@@ -108,10 +115,11 @@ class BaselineModel(pl.LightningModule):
     def test_epoch_end(self, outputs):
         self.cum_loss['test'] /= self.num_steps['test']
         accuracy = self.accuracy['test'].compute()
-        auc = self.auc['test'].compute()
         self.log("test_loss", self.cum_loss['test'])
         self.log('test_acc', accuracy)
-        self.log('test_auc', auc)
+        if self.num_classes == 2:        
+            auc = self.auc['test'].compute()
+            self.log('test_auc', auc)
 
 
 @contextlib.contextmanager
@@ -176,9 +184,10 @@ class VATModel(pl.LightningModule):
         self.accuracy = {"train": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
                          "test": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
                          "val": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted')}
-        self.auc = {"train": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
-                    "val": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
-                    "test": torchmetrics.AUROC(num_classes=num_classes, pos_label=1)}
+        if self.num_classes==2:
+            self.auc = {"train": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
+                        "val": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
+                        "test": torchmetrics.AUROC(num_classes=num_classes, pos_label=1)}
 
         if pretrained == 0:
             #self.classifier = handmade.ResNet(handmade.BasicBlock, [2, 2, 2, 2])
@@ -196,9 +205,10 @@ class VATModel(pl.LightningModule):
         self.accuracy = {"train": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
                          "test": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
                          "val": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted')}
-        self.auc = {"train": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
-                    "val": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
-                    "test": torchmetrics.AUROC(num_classes=num_classes, pos_label=1)}
+        if self.num_classes==2:
+            self.auc = {"train": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
+                        "val": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
+                        "test": torchmetrics.AUROC(num_classes=num_classes, pos_label=1)}
 
         linear_size = list(self.classifier.children())[-1].in_features
         self.classifier.fc = nn.Linear(linear_size, self.num_classes)
@@ -248,7 +258,8 @@ class VATModel(pl.LightningModule):
         loss = l + R_adv * self.a
         self.manual_backward(loss)
         self.accuracy[step_type].update(torch.argmax(pred_y, 1).to('cpu'), y.to('cpu'))
-        self.auc[step_type].update(self.softmax(pred_y)[:, 1], y)
+        if self.num_classes==2:
+            self.auc[step_type].update(self.softmax(pred_y)[:, 1], y)
         self.num_steps[step_type]+=1
         self.cum_loss[step_type]+=loss
         self.cum_l[step_type]+=l
@@ -271,12 +282,13 @@ class VATModel(pl.LightningModule):
         self.cum_l['train'] /= self.num_steps['train']
         self.cum_R_adv['train'] /= self.num_steps['train']
         accuracy = self.accuracy['train'].compute()
-        auc = self.auc['train'].compute()
         self.log("train_loss", self.cum_loss['train'])
         self.log("train_l", self.cum_l['train'])
         self.log("train_R_adv", self.cum_R_adv['train'])
         self.log('train_acc', accuracy, prog_bar=True)
-        self.log('train_auc', auc, prog_bar=True)
+        if self.num_classes==2:
+            auc = self.auc['train'].compute()
+            self.log('train_auc', auc, prog_bar=True)
 
     def validation_epoch_start(self):
         self.cum_loss['val']=0
@@ -293,12 +305,13 @@ class VATModel(pl.LightningModule):
         self.cum_l['val'] /= self.num_steps['val']
         self.cum_R_adv['val'] /= self.num_steps['val']
         accuracy = self.accuracy['val'].compute()
-        auc = self.auc['val'].compute()
         self.log("val_loss", self.cum_loss['val'], prog_bar=True)
         self.log("val_l", self.cum_l['val'])
         self.log("val_R_adv", self.cum_R_adv['val'])
         self.log('val_acc', accuracy, prog_bar=True)
-        self.log('val_auc', auc)
+        if self.num_classes==2:
+            auc = self.auc['val'].compute()
+            self.log('val_auc', auc)
 
     def test_epoch_start(self):
         self.cum_loss['test']=0
@@ -315,10 +328,11 @@ class VATModel(pl.LightningModule):
         self.cum_loss['test'] /= self.num_steps['test']
         self.cum_l['test'] /= self.num_steps['test']
         #self.cum_R_adv['test'] /= self.num_steps['test']
-        accuracy = self.accuracy['test'].compute()
         auc = self.auc['test'].compute()
         self.log("test_loss", self.cum_loss['test'])
         self.log("test_l", self.cum_l['test'])
         #self.log("test_R_adv", self.cum_R_adv['test'])
         self.log('test_acc', accuracy)
-        self.log('test_auc', auc)
+        if self.num_classes==2:
+            accuracy = self.accuracy['test'].compute()
+            self.log('test_auc', auc)
