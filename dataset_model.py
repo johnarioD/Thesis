@@ -1,7 +1,6 @@
 from torch.utils.data import Dataset
 import numpy as np
 import albumentations as A
-from matplotlib import pyplot as plt
 
 
 class bccDataset(Dataset):

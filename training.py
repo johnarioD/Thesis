@@ -2,7 +2,8 @@ import mlflow
 import torch
 from torch.utils.data import DataLoader, WeightedRandomSampler, ConcatDataset
 import pytorch_lightning as pl
-from models import BaselineModel, VATModel
+from models import BaselineModel
+from ssl_model import VATModel
 import preprocessing as data
 import mlflow.pytorch as tracker
 from sklearn.model_selection import KFold
@@ -173,13 +174,13 @@ def training(run_name, pretrain=PRTRN_NONE, num_classes=2, ssl=False, n_splits =
         print("Model Setup")
         with mlflow.start_run(run_name=run_name + "_" + str(k), experiment_id=experiment.experiment_id):
             if ssl:
-                model = VATModel(pretrained=pretrain, eps=30, a=1)
+                model = VATModel(pretrained=pretrain, eps=30, a=1, num_classes=num_classes)
             else:
                 if pretrain != PRTRN_LESN:
                     model = BaselineModel(num_classes=num_classes, pretrained=pretrain)
                 else:
                     model = BaselineModel.load_from_checkpoint(checkpoint_path="./models/baseline_ISIC_1.chkpt",
-                                                               num_classes=num_classes)
+                                                               num_classes=2)
                     model.change_output(num_classes=num_classes)
 
             # summary(model, (3, 128, 128))
@@ -210,6 +211,17 @@ def training(run_name, pretrain=PRTRN_NONE, num_classes=2, ssl=False, n_splits =
     print(f"Train Accuracy: {100 * cross_val_acc['train']}\n")
     print(f"Validation Accuracy: {100 * cross_val_acc['val']}\n")
     print(f"Test Accuracy: {100 * cross_val_acc['test']}\n")
+    if num_classes==2:
+        print(f"Confmat:\n\n")
+        confmat = model.confmat['test'].compute()
+        print(f"{confmat[0][0]}\t{confmat[0][1]}")
+        print(f"{confmat[1][0]}\t{confmat[1][1]}")
+    elif num_classes==3:
+        print(f"Confmat:\n\n")
+        confmat = model.confmat['test'].compute()
+        print(f"{confmat[0][0]}\t{confmat[0][1]}\t{confmat[0][2]}")
+        print(f"{confmat[1][0]}\t{confmat[1][1]}\t{confmat[1][2]}")
+        print(f"{confmat[2][0]}\t{confmat[2][1]}\t{confmat[2][2]}")
 
     with open("data/logs/"+run_name+"_log.txt", 'w')as f:
         results = "Cross-Validation Results:\n----------------------------------------------\n"
@@ -225,7 +237,11 @@ def training(run_name, pretrain=PRTRN_NONE, num_classes=2, ssl=False, n_splits =
 
 if __name__ == "__main__":
     #pretraining()
-    training(run_name="Resnet18 no pretraining", pretrain=PRTRN_NONE, ssl=False, num_classes=3)
-    training(run_name="Resnet18 imnet pretraining", pretrain=PRTRN_IMNT, ssl=False, num_classes=3)
-    training(run_name="Resnet18 lesion pretraining", pretrain=PRTRN_LESN, ssl=False, num_classes=3)
-    #training(run_name="VAT", pretrain=PRTRN_IMNT, ssl=True, num_classes=3)
+    #training(run_name="No Pre Final", pretrain=PRTRN_NONE, ssl=False, num_classes=2, n_splits=1)
+    #training(run_name="Imnet Pre Final", pretrain=PRTRN_IMNT, ssl=False, num_classes=2, n_splits=1)
+    #training(run_name="Lesion Pre Final", pretrain=PRTRN_LESN, ssl=False, num_classes=2, n_splits=1)
+    #training(run_name="No Pre Final", pretrain=PRTRN_NONE, ssl=False, num_classes=3, n_splits=1)
+    #training(run_name="Imnet Pre Final", pretrain=PRTRN_IMNT, ssl=False, num_classes=3, n_splits=1)
+    #training(run_name="Lesion Pre Final", pretrain=PRTRN_LESN, ssl=False, num_classes=3, n_splits=1)
+    training(run_name="VAT", pretrain=PRTRN_IMNT, ssl=True, num_classes=2, n_splits = 1)
+    training(run_name="VAT", pretrain=PRTRN_IMNT, ssl=True, num_classes=3, n_splits = 1)
