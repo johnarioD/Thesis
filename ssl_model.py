@@ -161,7 +161,7 @@ class VATModel(pl.LightningModule):
         if self.num_classes==2:
             self.auc[step_type].update(self.softmax(pred_y)[:, 1], y)
             if step_type=="test":
-            self.confmat["test"].update(self.softmax(pred_y, 1)[:, 1].to("cpu"), y.to("cpu"))
+                self.confmat["test"].update(self.softmax(pred_y, 1)[:, 1].to("cpu"), y.to("cpu"))
         elif step_type=="test":
             self.confmat["test"].update(torch.argmax(pred_y, 1).to('cpu'), y.to('cpu'))
         
@@ -219,27 +219,208 @@ class VATModel(pl.LightningModule):
             self.log('val_auc', auc)
 
     def test_epoch_start(self):
-        self.cum_loss['test']=0
-        self.cum_l['test']=0
-        self.cum_R_adv['test']=0
         self.num_steps['test']=0
 
     def test_step(self, test_batch, batch_idx):
-        out = self.generic_step(test_batch, batch_idx, step_type="test")
-        self.log("test_loss", out['loss'])
-        return out
+        x, y = test_batch
+
+        pred_y = self.classifier(x)
+        pred_y = self.softmax(pred_y)
+        loss = self.cross_entropy(pred_y, y)
+        self.accuracy['test'].update(torch.argmax(pred_y, 1).to('cpu'), y.to('cpu'))
+        if self.num_classes==2:
+            self.auc['test'].update(self.softmax(pred_y)[:, 1], y)
+            self.confmat["test"].update(self.softmax(pred_y)[:, 1].to("cpu"), y.to("cpu"))
+        else:
+            self.confmat["test"].update(torch.argmax(pred_y, 1).to('cpu'), y.to('cpu'))
+        return {"loss":loss}
 
     def test_epoch_end(self, outputs):
-        self.cum_loss['test'] /= self.num_steps['test']
-        self.cum_l['test'] /= self.num_steps['test']
-        self.cum_R_adv['test'] /= self.num_steps['test']
         accuracy = self.accuracy['test'].compute()
         confmat = self.confmat["test"].compute()
-        self.log("test_loss", self.cum_loss['test'])
-        self.log("test_l", self.cum_l['test'])
-        self.log("test_R_adv", self.cum_R_adv['test'])
         self.log('test_acc', accuracy)
         self.log("test_confmat", confmat)
         if self.num_classes==2:
+            auc = self.auc['test'].compute()
+            self.log('test_auc', auc)
+
+class VATModel2(pl.LightningModule):
+    def __init__(self, xi=1e-6, eps=1.0, ip=1, a=1, num_classes=2, pretrained=0):
+        super().__init__()
+        self.xi = xi
+        self.eps = eps
+        self.ip = ip
+        self.a = a
+
+        self.num_classes = num_classes
+        self.automatic_optimization = False
+
+        self.softmax = Softmax(dim=1)
+        self.cross_entropy = nn.CrossEntropyLoss()
+        self.kl_div = kl_div_with_logit
+
+        self.num_steps = {"train":0, "val":0, "test":0}
+        self.cum_loss = {"train":0, "val":0, "test":0}
+        self.cum_l = {"train":0, "val":0, "test":0}
+        self.cum_R_adv = {"train":0, "val":0, "test":0}
+
+        self.accuracy = {"train": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
+                         "test": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted'),
+                         "val": torchmetrics.Accuracy(num_classes=self.num_classes, average='weighted')}
+                
+        self.classifier = models.resnet18(pretrained=(pretrained==1))
+        if self.num_classes==2:
+            self.auc = {"train": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
+                        "val": torchmetrics.AUROC(num_classes=num_classes, pos_label=1),
+                        "test": torchmetrics.AUROC(num_classes=num_classes, pos_label=1)}
+            self.confmat = {"train": torchmetrics.ConfusionMatrix(task="binary", num_classes=2),
+                        "val": torchmetrics.ConfusionMatrix(task="binary", num_classes=2),
+                        "test": torchmetrics.ConfusionMatrix(task="binary", num_classes=2)}
+        if self.num_classes==3:
+            self.confmat = {"train": torchmetrics.ConfusionMatrix(task="multiclass", num_classes=self.num_classes),
+                            "val": torchmetrics.ConfusionMatrix(task="multiclass", num_classes=self.num_classes),
+                            "test": torchmetrics.ConfusionMatrix(task="multiclass", num_classes=self.num_classes)}
+
+        linear_size = list(self.classifier.children())[-1].in_features
+        self.classifier.fc = nn.Linear(linear_size, self.num_classes)
+
+    def forward(self, x):
+        return self.classifier(x)
+
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), lr=1e-4)
+
+    def training_epoch_start(self):
+        self.cum_loss['train']=0
+        self.cum_l['train']=0
+        self.cum_R_adv['train']=0
+        self.num_steps['train']=0
+
+    def training_step(self, train_batch, batch_idx):
+        torch.set_grad_enabled(True)
+        x, y = train_batch
+        unlabeled_idx = y == -1
+
+        pred_y = self.classifier(x)
+        pred_y = self.softmax(pred_y)
+        y[unlabeled_idx] = torch.argmax(pred_y, 1)[unlabeled_idx]
+
+        dd = torch.randn(x.size()).to(self.device)
+        dd.requires_grad = True
+
+        with _disable_tracking_bn_stats(self):
+            for _ in range(self.ip):
+                dd.requires_grad = True
+                dd = self.xi * l2_normalize(dd)
+
+                logit_hat = self.classifier(x + dd)
+
+                dist = kl_div_with_logit(pred_y, logit_hat)
+
+                dd = torch.autograd.grad(dist, dd)[0]
+
+        r_vadv = self.eps * l2_normalize(dd.detach())
+
+        pred_adv = self.classifier(x + r_vadv)
+        pred_adv = self.softmax(pred_adv)
+        R_adv = self.kl_div(pred_y, pred_adv)
+
+        self.optimizers().zero_grad()
+        l = self.cross_entropy(pred_y, y)
+        loss = l + R_adv * self.a
+        self.manual_backward(loss)
+
+        self.accuracy['train'].update(torch.argmax(pred_y, 1).to('cpu'), y.to('cpu'))
+        if self.num_classes==2:
+            self.auc['train'].update(self.softmax(pred_y)[:, 1], y)
+        self.num_steps['train']+=1
+        self.cum_loss['train']+=loss
+        self.cum_l['train']+=l
+        self.cum_R_adv['train']+=R_adv
+        self.optimizers().step()
+        return {'loss': loss, 'preds': pred_y, "target": y, "l": l}
+
+    def training_epoch_end(self, outputs):
+        self.cum_loss['train'] /= self.num_steps['train']
+        self.cum_l['train'] /= self.num_steps['train']
+        self.cum_R_adv['train'] /= self.num_steps['train']
+
+        accuracy = self.accuracy['train'].compute()
+
+        self.log("train_loss", self.cum_loss['train'])
+        self.log("train_l", self.cum_l['train'])
+        self.log("train_R_adv", self.cum_R_adv['train'])
+        self.log('train_acc', accuracy, prog_bar=True)
+
+        if self.num_classes==2:
+            auc = self.auc['train'].compute()
+            self.log('train_auc', auc, prog_bar=True)
+
+    def validation_epoch_start(self):
+        self.cum_loss['val']=0
+        self.num_steps['val']=0
+
+    def validation_step(self, val_batch, batch_idx):
+        x, y = val_batch
+        unlabeled_idx = y == -1
+
+        pred_y = self.classifier(x)
+        pred_y = self.softmax(pred_y)
+        y[unlabeled_idx] = torch.argmax(pred_y, 1)[unlabeled_idx]
+
+        loss = self.cross_entropy(pred_y, y)
+
+        self.accuracy['val'].update(torch.argmax(pred_y, 1).to('cpu'), y.to('cpu'))
+        if self.num_classes==2:
+            self.auc['val'].update(self.softmax(pred_y)[:, 1], y)
+ 
+        self.num_steps['val']+=1
+        self.cum_loss['val']+=loss
+        return {'loss': loss, 'preds': pred_y, "target": y}
+
+    def validation_epoch_end(self, outputs):
+        self.cum_loss['val'] /= self.num_steps['val']
+
+        accuracy = self.accuracy['val'].compute()
+
+        self.log("val_loss", self.cum_loss['val'], prog_bar=True)
+        self.log('val_acc', accuracy, prog_bar=True)
+
+        if self.num_classes==2:
+            auc = self.auc['val'].compute()
+            self.log('val_auc', auc)
+    
+    def test_epoch_start(self):
+        self.cum_loss['test']=0
+        self.num_steps['test']=0
+
+    def test_step(self, test_batch, batch_idx):
+        x, y = test_batch
+
+        pred_y = self.classifier(x)
+        pred_y = self.softmax(pred_y)
+        
+        loss = self.cross_entropy(pred_y, y)
+        self.accuracy["test"].update(torch.argmax(pred_y, 1).to('cpu'), y.to('cpu'))
+        if self.num_classes==2:
+            self.auc["test"].update(self.softmax(pred_y)[:, 1], y)
+            self.confmat["test"].update(self.softmax(pred_y, 1)[:, 1].to("cpu"), y.to("cpu"))
+        self.confmat["test"].update(torch.argmax(pred_y, 1).to('cpu'), y.to('cpu'))
+        
+        self.num_steps["test"]+=1
+        self.cum_loss["test"]+=loss
+        return {'loss': loss, 'preds': pred_y, "target": y}
+
+    def test_epoch_end(self, outputs):
+        self.cum_loss['test'] /= self.num_steps['test']
+
+        accuracy = self.accuracy['test'].compute()
+        confmat = self.confmat["test"].compute()
+
+        self.log("test_loss", self.cum_loss['test'])
+        self.log('test_acc', accuracy)
+        self.log("test_confmat", confmat)
+
+        if self.num_classes == 2:        
             auc = self.auc['test'].compute()
             self.log('test_auc', auc)

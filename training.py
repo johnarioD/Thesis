@@ -3,7 +3,7 @@ import torch
 from torch.utils.data import DataLoader, WeightedRandomSampler, ConcatDataset
 import pytorch_lightning as pl
 from models import BaselineModel
-from ssl_model import VATModel
+from ssl_model import VATModel2
 import preprocessing as data
 import mlflow.pytorch as tracker
 from sklearn.model_selection import KFold
@@ -11,9 +11,6 @@ import numpy as np
 from dataset_model import bccDataset
 import warnings
 from torchsummary import summary
-import pandas as pd
-import cv2
-from matplotlib import pyplot as plt
 import random
 from sklearn.model_selection import train_test_split
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
@@ -21,66 +18,6 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 PRTRN_NONE = 0
 PRTRN_IMNT = 1
 PRTRN_LESN = 2
-
-
-def pretraining():
-    data.preprocess("/ISIC2020", False)
-    data.preprocess("/ISIC2020", True)
-
-    torch.manual_seed(0)
-    np.random.seed(0)
-    random.seed(0)
-
-    imsize = 512
-
-    # data
-    print("Loading Data")
-    images = []
-
-    # load labels
-    with open("./data/unprocessed/ISIC_tags.csv", 'r') as metadata:
-        df = pd.read_csv(metadata)
-        Y = dict(zip(df.id, df.label))
-
-    # load images
-    indices = []
-    for file in df.id:
-        images.append(
-            cv2.resize(plt.imread("./data/preprocessed_hairy" + "/ISIC2020/" + file + ".jpg"), [imsize, imsize]))
-        indices.append(file)
-    X = np.array(images) // 255
-    Y = np.array([Y[i] for i in indices])
-
-    kf = KFold(n_splits=5)
-    kf.get_n_splits(X)
-
-    # warnings
-    # warnings.filterwarnings("ignore")
-
-    # model
-    print("Spliting K-folds")
-    batch_size, k = 32, 0
-    cross_val_acc = {'train': 0, 'val': 0, 'test': 0}
-
-    # run initialization
-    tracker.autolog(silent=True)
-
-    for train_idx, test_idx in kf.split(X):
-        k += 1
-        with mlflow.start_run():
-            train_data = bccDataset(X=X[train_idx], Y=Y[train_idx])
-            test_data = bccDataset(X=X[test_idx], Y=Y[test_idx])
-
-            model = BaselineModel(pretrained='False', num_classes=2)
-
-            # summary(model, (3, 128, 128))
-            early_stopping = pl.callbacks.early_stopping.EarlyStopping(monitor='train_loss', patience=80, mode='min',
-                                                                       min_delta=0.0001, check_on_train_epoch_end=True)
-            trainer = pl.Trainer(accelerator="gpu", gpus=1, precision=16, max_epochs=1000, callbacks=[early_stopping])
-
-            trainer.fit(model=model, train_dataloaders=DataLoader(train_data, batch_size=batch_size),
-                        val_dataloaders=DataLoader(test_data, batch_size=batch_size))
-            trainer.save_checkpoint("./models/baseline_ISIC_" + str(k) + ".chkpt")
 
 
 def training(run_name, pretrain=PRTRN_NONE, num_classes=2, ssl=False, n_splits = 10, hair=True):
@@ -92,37 +29,38 @@ def training(run_name, pretrain=PRTRN_NONE, num_classes=2, ssl=False, n_splits =
     random.seed(0)
 
     # Training Params
-    imsize = 512
-    batch_size = 32
+    imsize = 256
+    batch_size = 16
     split_size = 1/n_splits
     if n_splits < 4:
         split_size = 1/4
 
-    # Non-ssl data
-    X, Y = data.load_train(hair=hair, ssl=False, image_size=imsize, merge_classes=(num_classes==2))
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=split_size)
-
-    # Sampling
-    weight = len(Y_test)/np.unique(Y_test, return_counts=True)[1]
-    sample_weights = torch.from_numpy(weight[Y_test])
-    test_sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
-
-    test_dataset = bccDataset(X_test, Y_test)
-    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, sampler=test_sampler)
-
-    # Warnings
-    # warnings.filterwarnings("ignore")
-
     # Model metrics
-    cross_val_acc = {'train': 0, 'val': 0, 'test': 0}
+    cross_val_acc = {'train': 0, 'val': 0}
     if num_classes==2:
-        cross_val_auc = {'train': 0, 'val': 0, 'test': 0}
-
-    # Run Initialization
-    tracker.autolog(silent=True)
+        cross_val_auc = {'train': 0, 'val': 0}
+    
+    X, Y = data.load_train(hair=hair, ssl=False, image_size=imsize, merge_classes=(num_classes==2))
 
     # k-folds
     for k in range(n_splits):
+        # Non-ssl data
+        X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=split_size)
+
+        # Sampling
+        weight = len(Y_test)/np.unique(Y_test, return_counts=True)[1]
+        sample_weights = torch.from_numpy(weight[Y_test])
+        test_sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
+
+        test_dataset = bccDataset(X_test, Y_test)
+        test_dataloader = DataLoader(test_dataset, batch_size=batch_size, sampler=test_sampler)
+
+        # Warnings
+        # warnings.filterwarnings("ignore")
+
+        # Run Initialization
+        tracker.autolog(silent=True)
+
         print("Loading Data")
         X_train, X_val, Y_train, Y_val = train_test_split(X_train, Y_train, test_size=split_size/(1-split_size))
 
@@ -174,69 +112,43 @@ def training(run_name, pretrain=PRTRN_NONE, num_classes=2, ssl=False, n_splits =
         print("Model Setup")
         with mlflow.start_run(run_name=run_name + "_" + str(k), experiment_id=experiment.experiment_id):
             if ssl:
-                model = VATModel(pretrained=pretrain, eps=30, a=1, num_classes=num_classes)
+                model = VATModel2(pretrained=pretrain, eps=30, a=1, num_classes=num_classes)
             else:
                 if pretrain != PRTRN_LESN:
                     model = BaselineModel(num_classes=num_classes, pretrained=pretrain)
                 else:
-                    model = BaselineModel.load_from_checkpoint(checkpoint_path="./models/baseline_ISIC_1.chkpt",
-                                                               num_classes=2)
-                    model.change_output(num_classes=num_classes)
+                    model = BaselineModel.load_from_checkpoint(checkpoint_path="./models/baseline_ISIC_1.chkpt", num_classes=num_classes)
 
             # summary(model, (3, 128, 128))
-            early_stopping = EarlyStopping(monitor='train_loss', patience=200, mode='min', min_delta=0.00, check_on_train_epoch_end=True)
+            early_stopping = EarlyStopping(monitor='val_loss', patience=200, mode='min', min_delta=0.00, check_on_train_epoch_end=True)
 
             trainer = pl.Trainer(accelerator="gpu", gpus=1, precision=32, max_epochs=1000, callbacks=[early_stopping])
 
             trainer.fit(model=model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader)
-            trainer.test(model, dataloaders=test_dataloader)
 
             cross_val_acc['train'] += model.accuracy['train'].compute()
             cross_val_acc['val'] += model.accuracy['val'].compute()
-            cross_val_acc['test'] += model.accuracy['test'].compute()
             if num_classes==2:
                 cross_val_auc['train'] += model.auc['train'].compute()
                 cross_val_auc['val'] += model.auc['val'].compute()
-                cross_val_auc['test'] += model.auc['test'].compute()
 
     cross_val_acc['train'] /= n_splits
     cross_val_acc['val'] /= n_splits
-    cross_val_acc['test'] /= n_splits
     if num_classes==2:
         cross_val_auc['train'] /= n_splits
         cross_val_auc['val'] /= n_splits
-        cross_val_auc['test'] /= n_splits
-
-    print("Cross-Validation Results:\n----------------------------------------------")
-    print(f"Train Accuracy: {100 * cross_val_acc['train']}\n")
-    print(f"Validation Accuracy: {100 * cross_val_acc['val']}\n")
-    print(f"Test Accuracy: {100 * cross_val_acc['test']}\n")
-    if num_classes==2:
-        print(f"Confmat:\n\n")
-        confmat = model.confmat['test'].compute()
-        print(f"{confmat[0][0]}\t{confmat[0][1]}")
-        print(f"{confmat[1][0]}\t{confmat[1][1]}")
-    elif num_classes==3:
-        print(f"Confmat:\n\n")
-        confmat = model.confmat['test'].compute()
-        print(f"{confmat[0][0]}\t{confmat[0][1]}\t{confmat[0][2]}")
-        print(f"{confmat[1][0]}\t{confmat[1][1]}\t{confmat[1][2]}")
-        print(f"{confmat[2][0]}\t{confmat[2][1]}\t{confmat[2][2]}")
 
     with open("data/logs/"+run_name+"_log.txt", 'w')as f:
         results = "Cross-Validation Results:\n----------------------------------------------\n"
         results+=f"Train Accuracy: {100 * cross_val_acc['train']}\n"
         results+=f"Validation Accuracy: {100 * cross_val_acc['val']}\n"
-        results+=f"Test Accuracy: {100 * cross_val_acc['test']}\n"
         if num_classes==2:
             results+=f"Train Area Under Curve: {cross_val_auc['train']}\n"
             results+=f"Validation Area Under Curve: {cross_val_auc['val']}\n"
-            results+=f"Test Area Under Curve: {cross_val_auc['test']}\n"
         f.write(results)
 
 
 if __name__ == "__main__":
-    #pretraining()
     #training(run_name="No Pre Final", pretrain=PRTRN_NONE, ssl=False, num_classes=2, n_splits=1)
     #training(run_name="Imnet Pre Final", pretrain=PRTRN_IMNT, ssl=False, num_classes=2, n_splits=1)
     #training(run_name="Lesion Pre Final", pretrain=PRTRN_LESN, ssl=False, num_classes=2, n_splits=1)
