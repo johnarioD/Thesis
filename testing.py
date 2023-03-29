@@ -2,8 +2,8 @@ import mlflow
 import torch
 from torch.utils.data import DataLoader, WeightedRandomSampler, ConcatDataset
 import pytorch_lightning as pl
-from models import BaselineModel
-from ssl_model import VATModel
+from models import BaselineModel, VotingModel
+from ssl_model import VATModel2
 import preprocessing as data
 import mlflow.pytorch as tracker
 from sklearn.model_selection import KFold
@@ -18,8 +18,7 @@ import random
 from sklearn.model_selection import train_test_split
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
-def testing(run_name, model_path, hair=True, num_classes=2, n_splits = 10):
-    experiment = mlflow.get_experiment("1")
+def testing(run_name, model_path, num_classes, hair=True, n_splits = 10):
 
     # reproducibility
     torch.manual_seed(0)
@@ -58,30 +57,30 @@ def testing(run_name, model_path, hair=True, num_classes=2, n_splits = 10):
         tracker.autolog(silent=True)
 
         print("Model Setup")
-        with mlflow.start_run(run_name=run_name+"_test", experiment_id=experiment.experiment_id):
-            trainer = pl.Trainer(accelerator="gpu", gpus=1, precision=16, max_epochs=1000)
-            model = VATModel(pretrained=1, eps=30, a=1, num_classes=2)
-            model.change_output()
-            model = model.load_from_checkpoint(model_path)
-            trainer.test(model, dataloaders=test_dataloader)
+        trainer = pl.Trainer(accelerator="gpu", gpus=1, precision=16, max_epochs=1000)
+        model = VotingModel(num_classes=num_classes)
+        #model = VATModel2(pretrained=0, eps=30, a=1, num_classes=num_classes)
+        model = model.load_from_checkpoint(model_path, num_classes=3)
+        #model.change_dims(num_classes=num_classes)
+        trainer.test(model, dataloaders=test_dataloader)
 
-            cross_val_acc += model.accuracy['test']
-            if k ==1:
-                confmat = model.confmat['test'].compute()
-            else:
-                confmat += model.confmat['test'].compute()
-            if num_classes==2:
-                cross_val_auc += model.auc['test']
+        cross_val_acc += model.accuracy['test'].compute()
+        if k==0:
+            confmat = model.confmat['test'].compute()
+        else:
+            confmat += model.confmat['test'].compute()
+        if num_classes==2:
+                cross_val_auc += model.auc['test'].compute()
 
     cross_val_acc /= n_splits
-    confmat /= n_splits
+    #confmat /= n_splits
     if num_classes==2:
         cross_val_auc /= n_splits
 
     print("Cross-Validation Results:\n----------------------------------------------")
-    print(f"Accuracy: {100 * cross_val_acc['test']}\n")
+    print(f"Accuracy: {100 * cross_val_acc}\n")
     if num_classes==2:
-        print(f"AUC: {100 * cross_val_auc['test']}\n")
+        print(f"AUC: {100 * cross_val_auc}\n")
     if num_classes==2:
         print(f"Confmat:\n\n")
         print(f"{confmat[0][0]}\t{confmat[0][1]}")
@@ -94,4 +93,4 @@ def testing(run_name, model_path, hair=True, num_classes=2, n_splits = 10):
 
 
 if __name__ == "__main__":
-    testing(run_name="testing", model_path="./lightning_logs/version_553/checkpoints/epoch=412-step=45843.ckpt",num_classes=3)
+    testing(run_name="testing", model_path="./lightning_logs/version_839/checkpoints/epoch=999-step=14000.ckpt",num_classes=3)

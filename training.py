@@ -2,7 +2,7 @@ import mlflow
 import torch
 from torch.utils.data import DataLoader, WeightedRandomSampler, ConcatDataset
 import pytorch_lightning as pl
-from models import BaselineModel
+from models import BaselineModel, VotingModel
 from ssl_model import VATModel2
 import preprocessing as data
 import mlflow.pytorch as tracker
@@ -20,7 +20,7 @@ PRTRN_IMNT = 1
 PRTRN_LESN = 2
 
 
-def training(run_name, pretrain=PRTRN_NONE, num_classes=2, ssl=False, n_splits = 10, hair=True):
+def training(run_name, pretrain=PRTRN_NONE, num_classes=2, ssl=False, vote=False, n_splits = 10, hair=True):
     experiment = mlflow.get_experiment("1")
 
     # reproducibility
@@ -29,8 +29,8 @@ def training(run_name, pretrain=PRTRN_NONE, num_classes=2, ssl=False, n_splits =
     random.seed(0)
 
     # Training Params
-    imsize = 256
-    batch_size = 16
+    imsize = 512
+    batch_size = 32
     split_size = 1/n_splits
     if n_splits < 4:
         split_size = 1/4
@@ -113,11 +113,14 @@ def training(run_name, pretrain=PRTRN_NONE, num_classes=2, ssl=False, n_splits =
         with mlflow.start_run(run_name=run_name + "_" + str(k), experiment_id=experiment.experiment_id):
             if ssl:
                 model = VATModel2(pretrained=pretrain, eps=30, a=1, num_classes=num_classes)
+            elif vote:
+                model = VotingModel(num_classes=num_classes)
             else:
                 if pretrain != PRTRN_LESN:
-                    model = BaselineModel(num_classes=num_classes, pretrained=pretrain)
+                    model = BaselineModel(num_classes=num_classes, pretrained=pretrain).change_dims()
                 else:
-                    model = BaselineModel.load_from_checkpoint(checkpoint_path="./models/baseline_ISIC_1.chkpt", num_classes=num_classes)
+                    model = BaselineModel.load_from_checkpoint(checkpoint_path="./models/baseline_ISIC_1.chkpt", num_classes=2)
+                    model.change_dims(num_classes=3)
 
             # summary(model, (3, 128, 128))
             early_stopping = EarlyStopping(monitor='val_loss', patience=200, mode='min', min_delta=0.00, check_on_train_epoch_end=True)
@@ -155,5 +158,6 @@ if __name__ == "__main__":
     #training(run_name="No Pre Final", pretrain=PRTRN_NONE, ssl=False, num_classes=3, n_splits=1)
     #training(run_name="Imnet Pre Final", pretrain=PRTRN_IMNT, ssl=False, num_classes=3, n_splits=1)
     #training(run_name="Lesion Pre Final", pretrain=PRTRN_LESN, ssl=False, num_classes=3, n_splits=1)
-    training(run_name="VAT", pretrain=PRTRN_IMNT, ssl=True, num_classes=2, n_splits = 1)
-    training(run_name="VAT", pretrain=PRTRN_IMNT, ssl=True, num_classes=3, n_splits = 1)
+    training(run_name="Ensemble", pretrain=PRTRN_LESN, vote=True, num_classes=3, n_splits=1)
+    #training(run_name="VAT", pretrain=PRTRN_IMNT, ssl=True, num_classes=2, n_splits = 1)
+    #training(run_name="VAT", pretrain=PRTRN_IMNT, ssl=True, num_classes=3, n_splits = 1)

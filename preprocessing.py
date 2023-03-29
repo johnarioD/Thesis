@@ -178,11 +178,11 @@ def load_train(hair=True, ssl=False, image_size=512, merge_classes=True):
 
     lbl_file = "data/unprocessed/BCC_tags.csv"
     if hair:
-        labeled_image_folder = "data/preprocessed_hairy/BCC"
-        unlabeled_image_folder = "data/preprocessed_hairy/train"
+        labeled_image_folder = "C:/Users/Giannis/Documents/Diplo/preprocessed_hairy/BCC"
+        unlabeled_image_folder = "C:/Users/Giannis/Documents/Diplo/preprocessed_hairy/train"
     else:
-        labeled_image_folder = "data/preprocessed/BCC"
-        unlabeled_image_folder = "data/preprocessed/train"
+        labeled_image_folder = "C:/Users/Giannis/Documents/Diplo/preprocessed/BCC"
+        unlabeled_image_folder = "C:/Users/Giannis/Documents/Diplo/preprocessed/train"
 
     if not ssl:
         # load labels
@@ -194,7 +194,7 @@ def load_train(hair=True, ssl=False, image_size=512, merge_classes=True):
         for _, _, files in os.walk(labeled_image_folder):
             for file in files:
                 i = int(re.sub('\.jpg|\.JPG', '', file))
-                normal_image = cv2.resize(plt.imread(labeled_image_folder + "/" + file), [image_size, image_size])
+                normal_image = labeled_image_folder + "/" + file
                 images.append(normal_image)
                 indices.append(i)
         labels = np.array([labels[i] for i in indices]) - 1
@@ -203,7 +203,7 @@ def load_train(hair=True, ssl=False, image_size=512, merge_classes=True):
     else:
         for _, _, files in os.walk(unlabeled_image_folder):
             for file in files:
-                normal_image = cv2.resize(plt.imread(unlabeled_image_folder + "/" + file), [image_size, image_size])
+                normal_image = unlabeled_image_folder + "/" + file
                 images.append(normal_image)
         labels = np.zeros(shape=(len(images),)) - 1
 

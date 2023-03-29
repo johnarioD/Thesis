@@ -404,7 +404,6 @@ class VATModel2(pl.LightningModule):
         self.accuracy["test"].update(torch.argmax(pred_y, 1).to('cpu'), y.to('cpu'))
         if self.num_classes==2:
             self.auc["test"].update(self.softmax(pred_y)[:, 1], y)
-            self.confmat["test"].update(self.softmax(pred_y, 1)[:, 1].to("cpu"), y.to("cpu"))
         self.confmat["test"].update(torch.argmax(pred_y, 1).to('cpu'), y.to('cpu'))
         
         self.num_steps["test"]+=1
